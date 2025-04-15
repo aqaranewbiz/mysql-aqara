@@ -1,49 +1,95 @@
 import json
 import sys
 import os
-from typing import Dict, Any, Optional, List
+import signal
+import time
 import mysql.connector
 from mysql.connector import Error
+import logging
+from datetime import datetime
 
-# Global database configuration
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(name)s] [%(levelname)s] %(message)s',
+    datefmt='%Y-%m-%dT%H:%M:%S.%fZ'
+)
+logger = logging.getLogger('mysql-aqara')
+
+# Global variables
 db_config = None
+last_activity_time = time.time()
+KEEP_ALIVE_INTERVAL = 30  # seconds
+TIMEOUT = 60  # seconds
 
-def connect_db(params: Dict[str, Any]) -> Dict[str, Any]:
-    """Establish database connection"""
+def signal_handler(signum, frame):
+    """Handle termination signals"""
+    logger.info("Received termination signal, cleaning up...")
+    cleanup()
+    sys.exit(0)
+
+def cleanup():
+    """Cleanup resources before exit"""
+    if db_config:
+        try:
+            conn = mysql.connector.connect(**db_config)
+            conn.close()
+            logger.info("Database connection closed")
+        except Error as e:
+            logger.error(f"Error closing database connection: {e}")
+
+def check_timeout():
+    """Check if the connection has timed out"""
+    current_time = time.time()
+    if current_time - last_activity_time > TIMEOUT:
+        logger.warning("Connection timeout detected")
+        return True
+    return False
+
+def send_keep_alive():
+    """Send keep-alive message to prevent timeout"""
+    global last_activity_time
+    last_activity_time = time.time()
+    response = {
+        "jsonrpc": "2.0",
+        "method": "keepAlive",
+        "params": {"timestamp": datetime.utcnow().isoformat()}
+    }
+    print(json.dumps(response), flush=True)
+
+def connect_db(host, user, password, database):
+    """Establish a connection to the MySQL database"""
     global db_config
     try:
-        # Store the connection parameters
         db_config = {
-            'host': params.get('host') or os.getenv('MYSQL_HOST'),
-            'user': params.get('user') or os.getenv('MYSQL_USER'),
-            'password': params.get('password') or os.getenv('MYSQL_PASSWORD'),
-            'database': params.get('database') or os.getenv('MYSQL_DATABASE'),
+            'host': host,
+            'user': user,
+            'password': password,
+            'database': database,
             'charset': 'utf8mb4',
-            'collation': 'utf8mb4_general_ci'
+            'collation': 'utf8mb4_unicode_ci'
         }
         
         # Test the connection
         conn = mysql.connector.connect(**db_config)
         conn.close()
         
-        return {"status": "success", "message": "Database connection established"}
+        logger.info("Database connection established successfully")
+        return {"success": True, "message": "Connected to database successfully"}
     except Error as e:
-        return {"status": "error", "message": str(e)}
+        logger.error(f"Database connection error: {e}")
+        return {"success": False, "error": str(e)}
 
-def create_or_modify_table(params: Dict[str, Any]) -> Dict[str, Any]:
+def create_or_modify_table(table_name, columns):
     """Create or modify a table"""
     if not db_config:
-        return {"status": "error", "message": "Database not connected. Please connect first."}
+        return {"success": False, "error": "Database not connected"}
     
     try:
         conn = mysql.connector.connect(**db_config)
         cursor = conn.cursor()
         
-        table_name = params['table_name']
-        columns = params['columns']
-        unique_keys = params.get('unique_keys', [])
-        
-        # Drop existing table
+        # Drop existing table if it exists
         cursor.execute(f"DROP TABLE IF EXISTS {table_name}")
         
         # Create new table
@@ -60,10 +106,6 @@ def create_or_modify_table(params: Dict[str, Any]) -> Dict[str, Any]:
                 col_def += " PRIMARY KEY"
             column_defs.append(col_def)
         
-        # Add unique keys
-        for key in unique_keys:
-            column_defs.append(f"UNIQUE KEY {key['name']} ({key['columns']})")
-        
         create_table_sql = f"CREATE TABLE {table_name} ({', '.join(column_defs)})"
         cursor.execute(create_table_sql)
         
@@ -71,62 +113,55 @@ def create_or_modify_table(params: Dict[str, Any]) -> Dict[str, Any]:
         cursor.close()
         conn.close()
         
-        return {"status": "success", "message": f"Table {table_name} created successfully"}
+        logger.info(f"Table {table_name} created/modified successfully")
+        return {"success": True, "message": f"Table {table_name} created/modified successfully"}
     except Error as e:
-        return {"status": "error", "message": str(e)}
+        logger.error(f"Error creating/modifying table: {e}")
+        return {"success": False, "error": str(e)}
 
-def execute_query(params: Dict[str, Any]) -> Dict[str, Any]:
-    """Execute SELECT query"""
+def execute_query(query):
+    """Execute a SELECT query"""
     if not db_config:
-        return {"status": "error", "message": "Database not connected. Please connect first."}
+        return {"success": False, "error": "Database not connected"}
     
     try:
         conn = mysql.connector.connect(**db_config)
         cursor = conn.cursor(dictionary=True)
-        
-        if params.get('params'):
-            cursor.execute(params['sql'], params['params'])
-        else:
-            cursor.execute(params['sql'])
-            
+        cursor.execute(query)
         results = cursor.fetchall()
         cursor.close()
         conn.close()
         
-        return {"status": "success", "results": results}
+        logger.info(f"Query executed successfully: {query}")
+        return {"success": True, "results": results}
     except Error as e:
-        return {"status": "error", "message": str(e)}
+        logger.error(f"Error executing query: {e}")
+        return {"success": False, "error": str(e)}
 
-def execute_command(params: Dict[str, Any]) -> Dict[str, Any]:
-    """Execute INSERT, UPDATE, or DELETE query"""
+def execute_command(query):
+    """Execute INSERT, UPDATE, or DELETE queries"""
     if not db_config:
-        return {"status": "error", "message": "Database not connected. Please connect first."}
+        return {"success": False, "error": "Database not connected"}
     
     try:
         conn = mysql.connector.connect(**db_config)
         cursor = conn.cursor()
-        
-        if params.get('params'):
-            cursor.execute(params['sql'], params['params'])
-        else:
-            cursor.execute(params['sql'])
-            
-        conn.commit()
+        cursor.execute(query)
         affected_rows = cursor.rowcount
+        conn.commit()
         cursor.close()
         conn.close()
         
-        return {
-            "status": "success",
-            "affected_rows": affected_rows
-        }
+        logger.info(f"Command executed successfully: {query}")
+        return {"success": True, "affected_rows": affected_rows}
     except Error as e:
-        return {"status": "error", "message": str(e)}
+        logger.error(f"Error executing command: {e}")
+        return {"success": False, "error": str(e)}
 
-def list_tables() -> Dict[str, Any]:
-    """List all tables in database"""
+def list_tables():
+    """List all tables in the database"""
     if not db_config:
-        return {"status": "error", "message": "Database not connected. Please connect first."}
+        return {"success": False, "error": "Database not connected"}
     
     try:
         conn = mysql.connector.connect(**db_config)
@@ -136,176 +171,197 @@ def list_tables() -> Dict[str, Any]:
         cursor.close()
         conn.close()
         
-        return {"status": "success", "tables": tables}
+        logger.info("Tables listed successfully")
+        return {"success": True, "tables": tables}
     except Error as e:
-        return {"status": "error", "message": str(e)}
+        logger.error(f"Error listing tables: {e}")
+        return {"success": False, "error": str(e)}
 
-def describe_table(params: Dict[str, Any]) -> Dict[str, Any]:
-    """Get table structure"""
+def describe_table(table_name):
+    """Get the structure of a table"""
     if not db_config:
-        return {"status": "error", "message": "Database not connected. Please connect first."}
+        return {"success": False, "error": "Database not connected"}
     
     try:
         conn = mysql.connector.connect(**db_config)
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute(f"DESCRIBE {params['table']}")
-        structure = cursor.fetchall()
+        cursor = conn.cursor()
+        cursor.execute(f"DESCRIBE {table_name}")
+        columns = cursor.fetchall()
         cursor.close()
         conn.close()
         
-        return {"status": "success", "structure": structure}
+        logger.info(f"Table {table_name} described successfully")
+        return {"success": True, "columns": columns}
     except Error as e:
-        return {"status": "error", "message": str(e)}
+        logger.error(f"Error describing table: {e}")
+        return {"success": False, "error": str(e)}
 
-def handle_request(request: Dict[str, Any]) -> Dict[str, Any]:
-    """Handle MCP requests"""
+def handle_request(request):
+    """Handle incoming MCP requests"""
+    global last_activity_time
+    last_activity_time = time.time()
+    
     try:
-        request_type = request.get("type")
-        request_id = request.get("id")
-
-        if request_type == "getServerInfo":
+        if request.get("method") == "getServerInfo":
             return {
-                "type": "response",
-                "id": request_id,
+                "jsonrpc": "2.0",
+                "id": request.get("id"),
                 "result": {
-                    "name": "@aqaranewbiz/mysql-aqaranewbiz",
+                    "name": "mysql-aqara",
                     "version": "1.0.0",
-                    "tools": {
-                        "connect_db": {
-                            "description": "Establish connection to MySQL database",
+                    "tools": [
+                        {
+                            "name": "connect_db",
+                            "description": "Connect to MySQL database",
                             "parameters": {
-                                "host": {"type": "string"},
-                                "user": {"type": "string"},
-                                "password": {"type": "string"},
-                                "database": {"type": "string"}
+                                "host": {"type": "string", "description": "Database host"},
+                                "user": {"type": "string", "description": "Database user"},
+                                "password": {"type": "string", "description": "Database password"},
+                                "database": {"type": "string", "description": "Database name"}
                             }
                         },
-                        "create_table": {
+                        {
+                            "name": "create_or_modify_table",
                             "description": "Create or modify a table",
                             "parameters": {
-                                "table_name": {"type": "string"},
-                                "columns": {
-                                    "type": "array",
-                                    "items": {
-                                        "type": "object",
-                                        "properties": {
-                                            "name": {"type": "string"},
-                                            "type": {"type": "string"},
-                                            "not_null": {"type": "boolean", "optional": true},
-                                            "default": {"type": "string", "optional": true},
-                                            "auto_increment": {"type": "boolean", "optional": true},
-                                            "primary_key": {"type": "boolean", "optional": true}
-                                        }
-                                    }
-                                },
-                                "unique_keys": {
-                                    "type": "array",
-                                    "optional": true,
-                                    "items": {
-                                        "type": "object",
-                                        "properties": {
-                                            "name": {"type": "string"},
-                                            "columns": {"type": "string"}
-                                        }
-                                    }
-                                }
+                                "table_name": {"type": "string", "description": "Name of the table"},
+                                "columns": {"type": "array", "description": "Array of column definitions"}
                             }
                         },
-                        "query": {
-                            "description": "Execute SELECT queries",
+                        {
+                            "name": "execute_query",
+                            "description": "Execute a SELECT query",
                             "parameters": {
-                                "sql": {"type": "string"},
-                                "params": {"type": "array", "optional": true}
+                                "query": {"type": "string", "description": "SQL query string"}
                             }
                         },
-                        "execute": {
+                        {
+                            "name": "execute_command",
                             "description": "Execute INSERT, UPDATE, or DELETE queries",
                             "parameters": {
-                                "sql": {"type": "string"},
-                                "params": {"type": "array", "optional": true}
+                                "query": {"type": "string", "description": "SQL command string"}
                             }
                         },
-                        "list_tables": {
-                            "description": "List all tables in database",
-                            "parameters": {}
+                        {
+                            "name": "list_tables",
+                            "description": "List all tables in the database"
                         },
-                        "describe_table": {
-                            "description": "Get table structure",
+                        {
+                            "name": "describe_table",
+                            "description": "Get the structure of a table",
                             "parameters": {
-                                "table": {"type": "string"}
+                                "table_name": {"type": "string", "description": "Name of the table"}
                             }
                         }
-                    }
+                    ]
                 }
             }
-        elif request_type == "executeTool":
-            tool_name = request.get("tool")
-            params = request.get("params", {})
+        
+        elif request.get("method") == "executeTool":
+            tool_name = request["params"].get("name")
+            tool_params = request["params"].get("parameters", {})
             
             if tool_name == "connect_db":
-                result = connect_db(params)
-            elif tool_name == "create_table":
-                result = create_or_modify_table(params)
-            elif tool_name == "query":
-                result = execute_query(params)
-            elif tool_name == "execute":
-                result = execute_command(params)
+                result = connect_db(**tool_params)
+            elif tool_name == "create_or_modify_table":
+                result = create_or_modify_table(**tool_params)
+            elif tool_name == "execute_query":
+                result = execute_query(**tool_params)
+            elif tool_name == "execute_command":
+                result = execute_command(**tool_params)
             elif tool_name == "list_tables":
                 result = list_tables()
             elif tool_name == "describe_table":
-                result = describe_table(params)
+                result = describe_table(**tool_params)
             else:
                 return {
-                    "type": "error",
-                    "id": request_id,
-                    "error": f"Unknown tool: {tool_name}"
-                }
-            
-            if result.get("status") == "error":
-                return {
-                    "type": "error",
-                    "id": request_id,
-                    "error": result["message"]
+                    "jsonrpc": "2.0",
+                    "id": request.get("id"),
+                    "error": {
+                        "code": -32601,
+                        "message": f"Method not found: {tool_name}"
+                    }
                 }
             
             return {
-                "type": "response",
-                "id": request_id,
+                "jsonrpc": "2.0",
+                "id": request.get("id"),
                 "result": result
             }
+        
         else:
             return {
-                "type": "error",
-                "id": request_id,
-                "error": f"Unknown request type: {request_type}"
+                "jsonrpc": "2.0",
+                "id": request.get("id"),
+                "error": {
+                    "code": -32601,
+                    "message": f"Method not found: {request.get('method')}"
+                }
             }
+    
     except Exception as e:
+        logger.error(f"Error handling request: {e}")
         return {
-            "type": "error",
+            "jsonrpc": "2.0",
             "id": request.get("id"),
-            "error": str(e)
+            "error": {
+                "code": -32603,
+                "message": f"Internal error: {str(e)}"
+            }
         }
 
 def main():
-    """Main function to handle stdin/stdout communication"""
+    """Main function to handle MCP server operations"""
+    logger.info("Initializing server...")
+    
+    # Set up signal handlers
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    
+    # Main loop
     while True:
         try:
+            # Read request from stdin
             line = sys.stdin.readline()
             if not line:
                 break
-                
+            
+            # Parse request
             request = json.loads(line)
+            
+            # Handle request
             response = handle_request(request)
             
-            sys.stdout.write(json.dumps(response) + "\n")
-            sys.stdout.flush()
+            # Send response
+            print(json.dumps(response), flush=True)
+            
+            # Check for timeout
+            if check_timeout():
+                logger.warning("Connection timeout, sending keep-alive")
+                send_keep_alive()
             
         except json.JSONDecodeError as e:
-            sys.stderr.write(f"Invalid JSON input: {str(e)}\n")
-            sys.stderr.flush()
+            logger.error(f"Error decoding JSON: {e}")
+            print(json.dumps({
+                "jsonrpc": "2.0",
+                "error": {
+                    "code": -32700,
+                    "message": "Parse error"
+                }
+            }), flush=True)
+        
         except Exception as e:
-            sys.stderr.write(f"Error: {str(e)}\n")
-            sys.stderr.flush()
+            logger.error(f"Unexpected error: {e}")
+            print(json.dumps({
+                "jsonrpc": "2.0",
+                "error": {
+                    "code": -32603,
+                    "message": f"Internal error: {str(e)}"
+                }
+            }), flush=True)
+    
+    logger.info("Server shutting down...")
+    cleanup()
 
 if __name__ == "__main__":
     main() 
