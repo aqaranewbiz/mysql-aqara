@@ -11,31 +11,31 @@ startCommand:
   configSchema:
     type: object
     required:
-      - MYSQL_HOST
-      - MYSQL_USER
-      - MYSQL_PASSWORD
-      - MYSQL_DATABASE
+      - host
+      - user
+      - password
+      - database
     properties:
-      MYSQL_HOST:
+      host:
         type: string
-        description: MySQL 서버 호스트
-      MYSQL_USER:
+        description: MySQL server host address
+      user:
         type: string
-        description: MySQL 사용자 이름
-      MYSQL_PASSWORD:
+        description: MySQL user name
+      password:
         type: string
-        description: MySQL 비밀번호
-      MYSQL_DATABASE:
+        description: MySQL user password
+      database:
         type: string
-        description: MySQL 데이터베이스 이름
+        description: MySQL database name
   commandFunction: |
     (config) => ({
       command: "python",
       args: ["mcp_server.py"],
       env: {
-        MYSQL_HOST: config.MYSQL_HOST,
-        MYSQL_USER: config.MYSQL_USER,
-        MYSQL_PASSWORD: config.MYSQL_PASSWORD,
-        MYSQL_DATABASE: config.MYSQL_DATABASE
+        MYSQL_HOST: config.host,
+        MYSQL_USER: config.user,
+        MYSQL_PASSWORD: config.password,
+        MYSQL_DATABASE: config.database
       }
     }) 

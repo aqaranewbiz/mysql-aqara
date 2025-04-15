@@ -14,10 +14,10 @@ def connect_db(params: Dict[str, Any]) -> Dict[str, Any]:
     try:
         # Store the connection parameters
         db_config = {
-            'host': params['host'],
-            'user': params['user'],
-            'password': params['password'],
-            'database': params['database'],
+            'host': params.get('host') or os.getenv('MYSQL_HOST'),
+            'user': params.get('user') or os.getenv('MYSQL_USER'),
+            'password': params.get('password') or os.getenv('MYSQL_PASSWORD'),
+            'database': params.get('database') or os.getenv('MYSQL_DATABASE'),
             'charset': 'utf8mb4',
             'collation': 'utf8mb4_general_ci'
         }
