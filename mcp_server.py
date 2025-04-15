@@ -204,7 +204,7 @@ def handle_request(request):
     try:
         # Handle initialization request
         if request.get("method") == "initialize":
-            logger.info("Received initialization request")
+            logger.info("Handling initialize request")
             return {
                 "jsonrpc": "2.0",
                 "id": request.get("id"),
@@ -224,110 +224,53 @@ def handle_request(request):
                 }
             }
         
-        elif request.get("method") == "getServerInfo":
-            logger.info("Received getServerInfo request")
+        # Handle tool requests
+        tool_name = request.get("params", {}).get("tool")
+        params = request.get("params", {}).get("args", {})
+        
+        if not tool_name:
+            logger.error("No tool specified in request")
             return {
                 "jsonrpc": "2.0",
                 "id": request.get("id"),
-                "result": {
-                    "name": "mysql-aqara",
-                    "version": "1.0.0",
-                    "tools": [
-                        {
-                            "name": "connect_db",
-                            "description": "Connect to MySQL database",
-                            "parameters": {
-                                "host": {"type": "string", "description": "Database host"},
-                                "user": {"type": "string", "description": "Database user"},
-                                "password": {"type": "string", "description": "Database password"},
-                                "database": {"type": "string", "description": "Database name"}
-                            }
-                        },
-                        {
-                            "name": "create_or_modify_table",
-                            "description": "Create or modify a table",
-                            "parameters": {
-                                "table_name": {"type": "string", "description": "Name of the table"},
-                                "columns": {"type": "array", "description": "Array of column definitions"}
-                            }
-                        },
-                        {
-                            "name": "execute_query",
-                            "description": "Execute a SELECT query",
-                            "parameters": {
-                                "query": {"type": "string", "description": "SQL query string"}
-                            }
-                        },
-                        {
-                            "name": "execute_command",
-                            "description": "Execute INSERT, UPDATE, or DELETE queries",
-                            "parameters": {
-                                "query": {"type": "string", "description": "SQL command string"}
-                            }
-                        },
-                        {
-                            "name": "list_tables",
-                            "description": "List all tables in the database"
-                        },
-                        {
-                            "name": "describe_table",
-                            "description": "Get the structure of a table",
-                            "parameters": {
-                                "table_name": {"type": "string", "description": "Name of the table"}
-                            }
-                        }
-                    ]
+                "error": {
+                    "code": -32602,
+                    "message": "Invalid params: no tool specified"
                 }
             }
         
-        elif request.get("method") == "executeTool":
-            tool_name = request["params"].get("name")
-            tool_params = request["params"].get("parameters", {})
-            
-            logger.info(f"Executing tool: {tool_name}")
-            
-            if tool_name == "connect_db":
-                result = connect_db(**tool_params)
-            elif tool_name == "create_or_modify_table":
-                result = create_or_modify_table(**tool_params)
-            elif tool_name == "execute_query":
-                result = execute_query(**tool_params)
-            elif tool_name == "execute_command":
-                result = execute_command(**tool_params)
-            elif tool_name == "list_tables":
-                result = list_tables()
-            elif tool_name == "describe_table":
-                result = describe_table(**tool_params)
-            else:
-                logger.error(f"Unknown tool requested: {tool_name}")
-                return {
-                    "jsonrpc": "2.0",
-                    "id": request.get("id"),
-                    "error": {
-                        "code": -32601,
-                        "message": f"Method not found: {tool_name}"
-                    }
-                }
-            
-            return {
-                "jsonrpc": "2.0",
-                "id": request.get("id"),
-                "result": result
-            }
+        # Map tool names to functions
+        tools = {
+            "connect_db": connect_db,
+            "create_or_modify_table": create_or_modify_table,
+            "execute_query": execute_query,
+            "execute_command": execute_command,
+            "list_tables": list_tables,
+            "describe_table": describe_table
+        }
         
-        else:
-            logger.error(f"Unknown method requested: {request.get('method')}")
+        if tool_name not in tools:
+            logger.error(f"Unknown tool: {tool_name}")
             return {
                 "jsonrpc": "2.0",
                 "id": request.get("id"),
                 "error": {
                     "code": -32601,
-                    "message": f"Method not found: {request.get('method')}"
+                    "message": f"Method not found: {tool_name}"
                 }
             }
-    
+        
+        # Execute the tool
+        result = tools[tool_name](**params)
+        
+        return {
+            "jsonrpc": "2.0",
+            "id": request.get("id"),
+            "result": result
+        }
+        
     except Exception as e:
-        logger.error(f"Error handling request: {e}", exc_info=True)
+        logger.error(f"Error handling request: {str(e)}", exc_info=True)
         return {
             "jsonrpc": "2.0",
             "id": request.get("id"),
@@ -338,62 +281,51 @@ def handle_request(request):
         }
 
 def main():
-    """Main function to handle MCP server operations"""
-    logger.info("Initializing server...")
-    
+    """Main entry point"""
     # Set up signal handlers
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
     
-    # Main loop
-    while True:
-        try:
-            # Read request from stdin
-            line = sys.stdin.readline()
-            if not line:
-                logger.info("No more input, shutting down...")
-                break
-            
-            # Parse request
-            try:
-                request = json.loads(line)
-                logger.debug(f"Received request: {request}")
-            except json.JSONDecodeError as e:
-                logger.error(f"Error decoding JSON: {e}")
-                print(json.dumps({
-                    "jsonrpc": "2.0",
-                    "error": {
-                        "code": -32700,
-                        "message": "Parse error"
-                    }
-                }), flush=True)
-                continue
-            
-            # Handle request
-            response = handle_request(request)
-            
-            # Send response
-            print(json.dumps(response), flush=True)
-            logger.debug(f"Sent response: {response}")
-            
+    logger.info("MySQL MCP Server starting...")
+    
+    # Keep-alive timer
+    last_keep_alive = time.time()
+    
+    try:
+        while True:
             # Check for timeout
             if check_timeout():
-                logger.warning("Connection timeout detected, sending keep-alive")
-                send_keep_alive()
+                logger.warning("Connection timed out, exiting...")
+                break
             
-        except Exception as e:
-            logger.error(f"Unexpected error in main loop: {e}", exc_info=True)
-            print(json.dumps({
-                "jsonrpc": "2.0",
-                "error": {
-                    "code": -32603,
-                    "message": f"Internal error: {str(e)}"
-                }
-            }), flush=True)
-            continue
+            # Send keep-alive if needed
+            current_time = time.time()
+            if current_time - last_keep_alive >= KEEP_ALIVE_INTERVAL:
+                send_keep_alive()
+                last_keep_alive = current_time
+            
+            # Read request from stdin
+            try:
+                line = sys.stdin.readline()
+                if not line:
+                    logger.warning("End of input stream, exiting...")
+                    break
+                
+                request = json.loads(line)
+                response = handle_request(request)
+                
+                # Send response
+                print(json.dumps(response), flush=True)
+                
+            except json.JSONDecodeError as e:
+                logger.error(f"Invalid JSON received: {e}")
+                continue
+            except Exception as e:
+                logger.error(f"Error processing request: {e}", exc_info=True)
+                continue
     
-    logger.info("Server shutting down...")
-    cleanup()
+    finally:
+        cleanup()
 
 if __name__ == "__main__":
     main() 
