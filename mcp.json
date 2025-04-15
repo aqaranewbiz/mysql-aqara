@@ -4,7 +4,15 @@
   "description": "Python-based MCP server for MySQL database operations",
   "language": "python",
   "main": "mcp_server.py",
+  "bin": {
+    "mcp-mysql-server": "./run.js"
+  },
+  "scripts": {
+    "start": "python mcp_server.py"
+  },
   "mcp": {
+    "type": "local",
+    "command": "node ./run.js",
     "tools": {
       "connect_db": {
         "description": "Establish connection to MySQL database using provided credentials",
