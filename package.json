@@ -1,42 +1,17 @@
 {
-  "name": "@aqaranewbiz/mysql-aqaranewbiz",
+  "name": "mysql-aqara",
   "version": "1.0.0",
-  "description": "MySQL MCP server for Smithery with one-click installation",
+  "description": "MySQL MCP server for Smithery",
   "main": "mcp_server.py",
   "bin": {
     "mcp-mysql-server": "./run.js"
   },
   "scripts": {
-    "start": "source venv/bin/activate && python mcp_server.py",
-    "install": "python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt",
-    "setup": "npm install && chmod +x run.js",
-    "postinstall": "chmod +x run.js"
+    "start": "python mcp_server.py"
   },
   "mcp": {
     "type": "local",
-    "name": "mysql-aqara",
-    "language": "python",
-    "command": "./run.js",
-    "tools": {
-      "connect_db": {
-        "description": "Connect to MySQL database"
-      },
-      "create_or_modify_table": {
-        "description": "Create or modify a table"
-      },
-      "execute_query": {
-        "description": "Execute a SELECT query"
-      },
-      "execute_command": {
-        "description": "Execute INSERT, UPDATE, or DELETE queries"
-      },
-      "list_tables": {
-        "description": "List all tables"
-      },
-      "describe_table": {
-        "description": "Get table structure"
-      }
-    }
+    "command": "node ./run.js"
   },
   "dependencies": {},
   "keywords": [
