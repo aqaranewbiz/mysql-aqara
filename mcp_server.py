@@ -216,6 +216,10 @@ def handle_request(request):
                             "resolveProvider": True,
                             "triggerCharacters": ["."]
                         }
+                    },
+                    "serverInfo": {
+                        "name": "mysql-aqara",
+                        "version": "1.0.0"
                     }
                 }
             }

@@ -14,7 +14,8 @@ const pythonProcess = spawn('python3', [pythonScript], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: {
         ...process.env,
-        PYTHONUNBUFFERED: '1'  // Ensure Python output is not buffered
+        PYTHONUNBUFFERED: '1',  // Ensure Python output is not buffered
+        PYTHONIOENCODING: 'utf-8'  // Ensure UTF-8 encoding
     }
 });
 
