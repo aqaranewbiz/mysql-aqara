@@ -204,6 +204,7 @@ def handle_request(request):
     try:
         # Handle initialization request
         if request.get("method") == "initialize":
+            logger.info("Received initialization request")
             return {
                 "jsonrpc": "2.0",
                 "id": request.get("id"),
@@ -220,6 +221,7 @@ def handle_request(request):
             }
         
         elif request.get("method") == "getServerInfo":
+            logger.info("Received getServerInfo request")
             return {
                 "jsonrpc": "2.0",
                 "id": request.get("id"),
@@ -277,6 +279,8 @@ def handle_request(request):
         elif request.get("method") == "executeTool":
             tool_name = request["params"].get("name")
             tool_params = request["params"].get("parameters", {})
+            
+            logger.info(f"Executing tool: {tool_name}")
             
             if tool_name == "connect_db":
                 result = connect_db(**tool_params)
@@ -349,6 +353,7 @@ def main():
             # Parse request
             try:
                 request = json.loads(line)
+                logger.debug(f"Received request: {request}")
             except json.JSONDecodeError as e:
                 logger.error(f"Error decoding JSON: {e}")
                 print(json.dumps({
@@ -365,6 +370,7 @@ def main():
             
             # Send response
             print(json.dumps(response), flush=True)
+            logger.debug(f"Sent response: {response}")
             
             # Check for timeout
             if check_timeout():
