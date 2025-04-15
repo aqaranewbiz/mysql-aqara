@@ -1,0 +1,28 @@
+{
+  "name": "@aqaranewbiz/mysql-aqaranewbiz",
+  "version": "1.0.0",
+  "description": "MySQL MCP server for Smithery",
+  "main": "mcp_server.py",
+  "bin": {
+    "mcp-mysql-server": "./run.js"
+  },
+  "scripts": {
+    "start": "python mcp_server.py"
+  },
+  "mcp": {
+    "server": {
+      "type": "local",
+      "language": "python",
+      "command": "python mcp_server.py"
+    }
+  },
+  "dependencies": {},
+  "keywords": [
+    "smithery",
+    "mcp",
+    "mysql",
+    "database"
+  ],
+  "author": "aqaranewbiz",
+  "license": "MIT"
+} 

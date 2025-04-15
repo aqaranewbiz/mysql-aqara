@@ -1,0 +1,96 @@
+{
+  "name": "@aqaranewbiz/mysql-aqaranewbiz",
+  "version": "1.0.0",
+  "description": "Python-based MCP server for MySQL database operations",
+  "language": "python",
+  "main": "mcp_server.py",
+  "mcp": {
+    "tools": {
+      "connect_db": {
+        "description": "Establish connection to MySQL database using provided credentials",
+        "parameters": {
+          "host": {
+            "type": "string",
+            "description": "Database host"
+          },
+          "user": {
+            "type": "string",
+            "description": "Database user"
+          },
+          "password": {
+            "type": "string",
+            "description": "Database password"
+          },
+          "database": {
+            "type": "string",
+            "description": "Database name"
+          }
+        }
+      },
+      "query": {
+        "description": "Execute SELECT queries with optional prepared statement parameters",
+        "parameters": {
+          "sql": {
+            "type": "string",
+            "description": "SQL query string"
+          },
+          "params": {
+            "type": "array",
+            "description": "Query parameters for prepared statement",
+            "optional": true
+          }
+        }
+      },
+      "execute": {
+        "description": "Execute INSERT, UPDATE, or DELETE queries with optional prepared statement parameters",
+        "parameters": {
+          "sql": {
+            "type": "string",
+            "description": "SQL query string"
+          },
+          "params": {
+            "type": "array",
+            "description": "Query parameters for prepared statement",
+            "optional": true
+          }
+        }
+      },
+      "list_tables": {
+        "description": "List all tables in the connected database",
+        "parameters": {}
+      },
+      "describe_table": {
+        "description": "Get the structure of a specific table",
+        "parameters": {
+          "table": {
+            "type": "string",
+            "description": "Table name"
+          }
+        }
+      }
+    },
+    "configuration": {
+      "env": {
+        "MYSQL_HOST": {
+          "type": "string",
+          "description": "MySQL server host"
+        },
+        "MYSQL_USER": {
+          "type": "string",
+          "description": "MySQL user"
+        },
+        "MYSQL_PASSWORD": {
+          "type": "string",
+          "description": "MySQL password"
+        },
+        "MYSQL_DATABASE": {
+          "type": "string",
+          "description": "MySQL database name"
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "mysql-connector-python": ">=8.0.0"
+  }
+} 

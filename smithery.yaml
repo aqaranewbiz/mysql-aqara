@@ -1,0 +1,41 @@
+name: mysql-mcp-server
+description: MySQL 데이터베이스에 대한 쿼리 실행을 지원하는 MCP 서버
+version: 1.0.0
+
+build:
+  dockerfile: Dockerfile
+  context: .
+
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    required:
+      - MYSQL_HOST
+      - MYSQL_USER
+      - MYSQL_PASSWORD
+      - MYSQL_DATABASE
+    properties:
+      MYSQL_HOST:
+        type: string
+        description: MySQL 서버 호스트
+      MYSQL_USER:
+        type: string
+        description: MySQL 사용자 이름
+      MYSQL_PASSWORD:
+        type: string
+        description: MySQL 비밀번호
+      MYSQL_DATABASE:
+        type: string
+        description: MySQL 데이터베이스 이름
+  commandFunction: |
+    (config) => ({
+      command: "python",
+      args: ["mcp_server.py"],
+      env: {
+        MYSQL_HOST: config.MYSQL_HOST,
+        MYSQL_USER: config.MYSQL_USER,
+        MYSQL_PASSWORD: config.MYSQL_PASSWORD,
+        MYSQL_DATABASE: config.MYSQL_DATABASE
+      }
+    }) 
