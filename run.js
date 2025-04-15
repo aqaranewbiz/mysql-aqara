@@ -21,11 +21,23 @@ pythonProcess.stderr.pipe(process.stderr);
 
 // Handle process termination
 pythonProcess.on('close', (code) => {
-  process.exit(code);
+  if (code !== 0) {
+    console.error(`Python process exited with code ${code}`);
+    process.exit(code);
+  }
 });
 
 // Handle errors
 pythonProcess.on('error', (err) => {
   console.error('Failed to start Python process:', err);
   process.exit(1);
+});
+
+// Handle process signals
+process.on('SIGINT', () => {
+  pythonProcess.kill('SIGINT');
+});
+
+process.on('SIGTERM', () => {
+  pythonProcess.kill('SIGTERM');
 }); 
