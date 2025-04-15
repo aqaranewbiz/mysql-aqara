@@ -20,7 +20,7 @@ logger = logging.getLogger('mysql-aqara')
 db_config = None
 last_activity_time = time.time()
 KEEP_ALIVE_INTERVAL = 30  # seconds
-TIMEOUT = 60  # seconds
+TIMEOUT = 300  # seconds (increased from 60 to 300)
 
 def signal_handler(signum, frame):
     """Handle termination signals"""
