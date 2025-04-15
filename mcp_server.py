@@ -202,7 +202,24 @@ def handle_request(request):
     last_activity_time = time.time()
     
     try:
-        if request.get("method") == "getServerInfo":
+        # Handle initialization request
+        if request.get("method") == "initialize":
+            return {
+                "jsonrpc": "2.0",
+                "id": request.get("id"),
+                "result": {
+                    "capabilities": {
+                        "textDocumentSync": 1,
+                        "hoverProvider": True,
+                        "completionProvider": {
+                            "resolveProvider": True,
+                            "triggerCharacters": ["."]
+                        }
+                    }
+                }
+            }
+        
+        elif request.get("method") == "getServerInfo":
             return {
                 "jsonrpc": "2.0",
                 "id": request.get("id"),
@@ -274,6 +291,7 @@ def handle_request(request):
             elif tool_name == "describe_table":
                 result = describe_table(**tool_params)
             else:
+                logger.error(f"Unknown tool requested: {tool_name}")
                 return {
                     "jsonrpc": "2.0",
                     "id": request.get("id"),
@@ -290,6 +308,7 @@ def handle_request(request):
             }
         
         else:
+            logger.error(f"Unknown method requested: {request.get('method')}")
             return {
                 "jsonrpc": "2.0",
                 "id": request.get("id"),
@@ -300,7 +319,7 @@ def handle_request(request):
             }
     
     except Exception as e:
-        logger.error(f"Error handling request: {e}")
+        logger.error(f"Error handling request: {e}", exc_info=True)
         return {
             "jsonrpc": "2.0",
             "id": request.get("id"),
@@ -324,10 +343,22 @@ def main():
             # Read request from stdin
             line = sys.stdin.readline()
             if not line:
+                logger.info("No more input, shutting down...")
                 break
             
             # Parse request
-            request = json.loads(line)
+            try:
+                request = json.loads(line)
+            except json.JSONDecodeError as e:
+                logger.error(f"Error decoding JSON: {e}")
+                print(json.dumps({
+                    "jsonrpc": "2.0",
+                    "error": {
+                        "code": -32700,
+                        "message": "Parse error"
+                    }
+                }), flush=True)
+                continue
             
             # Handle request
             response = handle_request(request)
@@ -337,21 +368,11 @@ def main():
             
             # Check for timeout
             if check_timeout():
-                logger.warning("Connection timeout, sending keep-alive")
+                logger.warning("Connection timeout detected, sending keep-alive")
                 send_keep_alive()
             
-        except json.JSONDecodeError as e:
-            logger.error(f"Error decoding JSON: {e}")
-            print(json.dumps({
-                "jsonrpc": "2.0",
-                "error": {
-                    "code": -32700,
-                    "message": "Parse error"
-                }
-            }), flush=True)
-        
         except Exception as e:
-            logger.error(f"Unexpected error: {e}")
+            logger.error(f"Unexpected error in main loop: {e}", exc_info=True)
             print(json.dumps({
                 "jsonrpc": "2.0",
                 "error": {
@@ -359,6 +380,7 @@ def main():
                     "message": f"Internal error: {str(e)}"
                 }
             }), flush=True)
+            continue
     
     logger.info("Server shutting down...")
     cleanup()
