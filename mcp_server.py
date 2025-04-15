@@ -18,6 +18,7 @@ logger = logging.getLogger('mysql-aqara')
 
 # Global variables
 db_config = None
+db_connection = None
 last_activity_time = time.time()
 KEEP_ALIVE_INTERVAL = 30  # seconds
 TIMEOUT = 300  # seconds (increased from 60 to 300)
@@ -59,7 +60,7 @@ def send_keep_alive():
 
 def connect_db(host, user, password, database):
     """Establish a connection to the MySQL database"""
-    global db_config
+    global db_config, db_connection
     try:
         db_config = {
             'host': host,
@@ -67,17 +68,17 @@ def connect_db(host, user, password, database):
             'password': password,
             'database': database,
             'charset': 'utf8mb4',
-            'collation': 'utf8mb4_unicode_ci'
+            'collation': 'utf8mb4_general_ci'
         }
         
         # Test the connection
-        conn = mysql.connector.connect(**db_config)
-        conn.close()
+        test_conn = mysql.connector.connect(**db_config)
+        test_conn.close()
         
         logger.info("Database connection established successfully")
         return {"success": True, "message": "Connected to database successfully"}
     except Error as e:
-        logger.error(f"Database connection error: {e}")
+        logger.error(f"Database connection error: {e}", exc_info=True)
         return {"success": False, "error": str(e)}
 
 def create_or_modify_table(table_name, columns):
@@ -198,16 +199,20 @@ def describe_table(table_name):
 
 def handle_request(request):
     """Handle incoming MCP requests"""
-    global last_activity_time
-    last_activity_time = time.time()
-    
     try:
+        if not isinstance(request, dict):
+            request = json.loads(request)
+        
+        method = request.get('method')
+        params = request.get('params', {})
+        request_id = request.get('id')
+        
         # Handle initialization request
-        if request.get("method") == "initialize":
+        if method == "initialize":
             logger.info("Handling initialize request")
             return {
                 "jsonrpc": "2.0",
-                "id": request.get("id"),
+                "id": request_id,
                 "result": {
                     "capabilities": {
                         "textDocumentSync": 1,
@@ -225,35 +230,13 @@ def handle_request(request):
             }
         
         # Handle tool requests
-        tool_name = request.get("params", {}).get("tool")
-        params = request.get("params", {}).get("args", {})
+        tool_name = method
         
-        if not tool_name:
-            logger.error("No tool specified in request")
-            return {
-                "jsonrpc": "2.0",
-                "id": request.get("id"),
-                "error": {
-                    "code": -32602,
-                    "message": "Invalid params: no tool specified"
-                }
-            }
-        
-        # Map tool names to functions
-        tools = {
-            "connect_db": connect_db,
-            "create_or_modify_table": create_or_modify_table,
-            "execute_query": execute_query,
-            "execute_command": execute_command,
-            "list_tables": list_tables,
-            "describe_table": describe_table
-        }
-        
-        if tool_name not in tools:
+        if tool_name not in ["connect_db", "create_or_modify_table", "execute_query", "execute_command", "list_tables", "describe_table"]:
             logger.error(f"Unknown tool: {tool_name}")
             return {
                 "jsonrpc": "2.0",
-                "id": request.get("id"),
+                "id": request_id,
                 "error": {
                     "code": -32601,
                     "message": f"Method not found: {tool_name}"
@@ -261,19 +244,19 @@ def handle_request(request):
             }
         
         # Execute the tool
-        result = tools[tool_name](**params)
+        result = globals()[tool_name](**params)
         
         return {
             "jsonrpc": "2.0",
-            "id": request.get("id"),
+            "id": request_id,
             "result": result
         }
         
     except Exception as e:
-        logger.error(f"Error handling request: {str(e)}", exc_info=True)
+        logger.error(f"Error handling request: {e}", exc_info=True)
         return {
             "jsonrpc": "2.0",
-            "id": request.get("id"),
+            "id": request_id,
             "error": {
                 "code": -32603,
                 "message": f"Internal error: {str(e)}"
@@ -311,18 +294,24 @@ def main():
                     logger.warning("End of input stream, exiting...")
                     break
                 
-                request = json.loads(line)
+                request = line.strip()
                 response = handle_request(request)
                 
                 # Send response
                 print(json.dumps(response), flush=True)
                 
-            except json.JSONDecodeError as e:
-                logger.error(f"Invalid JSON received: {e}")
-                continue
             except Exception as e:
                 logger.error(f"Error processing request: {e}", exc_info=True)
-                continue
+                # Send error response
+                error_response = {
+                    "jsonrpc": "2.0",
+                    "id": None,
+                    "error": {
+                        "code": -32603,
+                        "message": f"Internal error: {str(e)}"
+                    }
+                }
+                print(json.dumps(error_response), flush=True)
     
     finally:
         cleanup()
