@@ -7,19 +7,38 @@
     "mcp-mysql-server": "./run.js"
   },
   "scripts": {
-    "start": "python mcp_server.py",
-    "install": "npm install -g",
+    "start": "source venv/bin/activate && python mcp_server.py",
+    "install": "python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt",
     "setup": "npm install && chmod +x run.js",
     "postinstall": "chmod +x run.js"
   },
   "mcp": {
     "type": "local",
+    "name": "mysql-aqara",
     "language": "python",
-    "command": "python mcp_server.py"
+    "command": "./run.js",
+    "tools": {
+      "connect_db": {
+        "description": "Connect to MySQL database"
+      },
+      "create_or_modify_table": {
+        "description": "Create or modify a table"
+      },
+      "execute_query": {
+        "description": "Execute a SELECT query"
+      },
+      "execute_command": {
+        "description": "Execute INSERT, UPDATE, or DELETE queries"
+      },
+      "list_tables": {
+        "description": "List all tables"
+      },
+      "describe_table": {
+        "description": "Get table structure"
+      }
+    }
   },
-  "dependencies": {
-    "mysql-connector-python": "^8.0.33"
-  },
+  "dependencies": {},
   "keywords": [
     "smithery",
     "mcp",

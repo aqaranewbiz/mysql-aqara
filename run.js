@@ -2,15 +2,25 @@
 
 const { spawn } = require('child_process');
 const path = require('path');
+const fs = require('fs');
 
 // Get the directory of this script
 const scriptDir = __dirname;
 
-// Path to the Python script
+// Path to the Python script and virtual environment
 const pythonScript = path.join(scriptDir, 'mcp_server.py');
+const venvPython = process.platform === 'win32'
+    ? path.join(scriptDir, 'venv', 'Scripts', 'python.exe')
+    : path.join(scriptDir, 'venv', 'bin', 'python');
 
-// Spawn Python process
-const pythonProcess = spawn('python3', [pythonScript], {
+// Check if virtual environment exists
+if (!fs.existsSync(venvPython)) {
+    console.error('Python virtual environment not found. Please run: npm run install');
+    process.exit(1);
+}
+
+// Spawn Python process using virtual environment
+const pythonProcess = spawn(venvPython, [pythonScript], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: {
         ...process.env,
