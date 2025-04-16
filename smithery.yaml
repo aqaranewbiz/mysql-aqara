@@ -1,4 +1,5 @@
-name: "mysql-aqara"
+# Smithery configuration file: https://smithery.ai/docs/config#smitheryyaml
+name: "@aqaranewbiz/mysql-aqara"
 displayName: "MySQL Database MCP Server"
 description: "MySQL MCP server for Smithery - Database query and management tools"
 version: "1.0.0"
@@ -6,8 +7,12 @@ license: "MIT"
 
 installation:
   type: "npm"
-  package: "mysql-aqara"
+  package: "@aqaranewbiz/mysql-aqara"
   local: true
+  localPath: "."
+
+server:
+  type: "stdio"
 
 build:
   dockerfile: Dockerfile
@@ -20,32 +25,42 @@ startCommand:
   configSchema:
     type: object
     required:
-      - host
-      - user
-      - password
-      - database
+      - mysqlHost
+      - mysqlUser
+      - mysqlPassword
+      - mysqlDatabase
     properties:
-      host:
+      mysqlHost:
         type: string
-        description: MySQL server host address
+        description: Hostname for the MySQL server
         default: "localhost"
-      user:
+      mysqlUser:
         type: string
         description: MySQL user name
-      password:
+      mysqlPassword:
         type: string
         description: MySQL user password
         secret: true
-      database:
+      mysqlDatabase:
         type: string
         description: MySQL database name
-  interactive: true
-  command:
-    - "node"
-    - "./run.js"
-  env:
-    DOCKER: "true"
-    PYTHONUNBUFFERED: "1"
-    PYTHONIOENCODING: "utf-8"
-    NODE_ENV: "production"
-    DEBUG: "true" 
+  commandFunction: |-
+    (config) => ({
+      command: 'node',
+      args: ['run.js'],
+      env: {
+        MYSQL_HOST: config.mysqlHost,
+        MYSQL_USER: config.mysqlUser,
+        MYSQL_PASSWORD: config.mysqlPassword,
+        MYSQL_DATABASE: config.mysqlDatabase,
+        PYTHONUNBUFFERED: '1',
+        PYTHONIOENCODING: 'utf-8',
+        NODE_ENV: 'production',
+        DEBUG: 'true'
+      }
+    })
+  exampleConfig:
+    mysqlHost: localhost
+    mysqlUser: example_user
+    mysqlPassword: example_password
+    mysqlDatabase: example_db 

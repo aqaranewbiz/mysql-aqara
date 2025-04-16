@@ -1,109 +1,24 @@
 {
-  "name": "mysql-aqara",
+  "name": "@aqaranewbiz/mysql-aqara",
   "version": "1.0.0",
-  "description": "MySQL MCP server for Smithery",
-  "main": "mcp_server.py",
+  "description": "MySQL MCP server for Smithery - Database query and management tools",
   "bin": {
-    "mysql-aqara": "./run.js"
+    "mysql-aqara": "./bin/mysql-aqara"
   },
+  "files": [
+    "bin",
+    "run.js",
+    "mcp_server.py",
+    "requirements.txt"
+  ],
   "scripts": {
-    "start": "node ./run.js",
+    "start": "node run.js",
     "postinstall": "pip install -r requirements.txt"
   },
-  "mcp": {
-    "type": "local",
-    "command": "node ./run.js",
-    "localInstallation": true,
-    "tools": {
-      "connect_db": {
-        "description": "Establish connection to MySQL database using provided credentials",
-        "parameters": {
-          "host": {
-            "type": "string",
-            "description": "Database host"
-          },
-          "user": {
-            "type": "string",
-            "description": "Database user"
-          },
-          "password": {
-            "type": "string",
-            "description": "Database password"
-          },
-          "database": {
-            "type": "string",
-            "description": "Database name"
-          }
-        }
-      },
-      "create_or_modify_table": {
-        "description": "Create or modify a database table",
-        "parameters": {
-          "table_name": {
-            "type": "string",
-            "description": "Name of the table to create or modify"
-          },
-          "columns": {
-            "type": "array",
-            "description": "Array of column definitions with name, type, and options"
-          },
-          "unique_keys": {
-            "type": "array",
-            "description": "Array of unique key definitions with name and columns",
-            "optional": true
-          }
-        }
-      },
-      "query": {
-        "description": "Execute SELECT queries with optional prepared statement parameters",
-        "parameters": {
-          "sql": {
-            "type": "string",
-            "description": "SQL query string"
-          },
-          "params": {
-            "type": "array",
-            "description": "Query parameters for prepared statement",
-            "optional": true
-          }
-        }
-      },
-      "execute": {
-        "description": "Execute INSERT, UPDATE, or DELETE queries with optional prepared statement parameters",
-        "parameters": {
-          "sql": {
-            "type": "string",
-            "description": "SQL query string"
-          },
-          "params": {
-            "type": "array",
-            "description": "Query parameters for prepared statement",
-            "optional": true
-          }
-        }
-      },
-      "list_tables": {
-        "description": "List all tables in the connected database",
-        "parameters": {}
-      },
-      "describe_table": {
-        "description": "Get the structure of a specific table",
-        "parameters": {
-          "table": {
-            "type": "string",
-            "description": "Table name"
-          }
-        }
-      }
-    }
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/aqaralife/portal"
-  },
   "keywords": [
-    "smithery",
     "mcp",
+    "model-context-protocol",
+    "smithery",
     "mysql",
     "database"
   ],
@@ -112,5 +27,12 @@
   "engines": {
     "node": ">=14.0.0"
   },
-  "dependencies": {}
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aqaralife/portal"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "mcp-server": true
 } 

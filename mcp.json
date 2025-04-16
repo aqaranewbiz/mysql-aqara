@@ -1,17 +1,15 @@
 {
-  "name": "mysql-aqara",
+  "name": "@aqaranewbiz/mysql-aqara",
   "version": "1.0.0",
   "description": "MySQL MCP server for Smithery",
-  "main": "mcp_server.py",
-  "bin": {
-    "mcp-mysql-server": "./run.js"
-  },
+  "main": "run.js",
+  "bin": "run.js",
   "scripts": {
-    "start": "node ./run.js"
+    "start": "node run.js"
   },
   "mcp": {
     "type": "local",
-    "command": "node ./run.js",
+    "command": "node run.js",
     "localInstallation": true,
     "tools": {
       "connect_db": {

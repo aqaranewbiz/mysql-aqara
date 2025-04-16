@@ -7,7 +7,7 @@ A MySQL MCP server implementation for Smithery that allows direct database opera
 ### One-Click Installation with Smithery
 
 1. In Smithery, select "Add MCP Server"
-2. Use package name: `mysql-aqara`
+2. Use package name: `@aqaranewbiz/mysql-aqara`
 3. Smithery will automatically install and configure the server
 
 ### Manual Installation
@@ -31,10 +31,10 @@ The server will automatically be available in Smithery after installation.
 ### Command Line
 ```bash
 # If installed globally
-mysql-aqara
+npx @aqaranewbiz/mysql-aqara
 
 # If installed locally
-npx mysql-aqara
+npx @aqaranewbiz/mysql-aqara
 ```
 
 ### Direct Execution
@@ -45,10 +45,10 @@ node run.js
 ### Using with Smithery CLI
 ```bash
 # Use Interactive Prompt (Recommended)
-npx @smithery/cli@latest run mysql-aqara
+npx @smithery/cli@latest run @aqaranewbiz/mysql-aqara
 
 # Or provide config as JSON (replace with your own values)
-npx @smithery/cli@latest run mysql-aqara --config '{"host":"<YOUR_HOST>","user":"<YOUR_USER>","password":"<YOUR_PASSWORD>","database":"<YOUR_DATABASE>"}'
+npx @smithery/cli@latest run @aqaranewbiz/mysql-aqara --config '{"host":"<YOUR_HOST>","user":"<YOUR_USER>","password":"<YOUR_PASSWORD>","database":"<YOUR_DATABASE>"}'
 ```
 
 ## Configuration
@@ -121,7 +121,7 @@ If you encounter any issues with server connection:
    - Check firewall rules allowing the connection
 
 6. If you see the error "This server works best locally, but does not have a local installation option":
-   - Make sure the server is installed with the correct package name: `mysql-aqara`
+   - Make sure the server is installed with the correct package name: `@aqaranewbiz/mysql-aqara`
    - Check that the package.json and mcp.json files have the property `localInstallation: true`
    - Ensure the mcp.json, package.json, and smithery.yaml files all use the same package name
 
@@ -131,7 +131,7 @@ If you encounter any issues with server connection:
    - Do not include spaces in the JSON string
    - Example:
      ```bash
-     npx @smithery/cli@latest run mysql-aqara --config '{"host":"localhost","user":"<YOUR_USER>","password":"<YOUR_PASSWORD>","database":"<YOUR_DATABASE>"}'
+     npx @smithery/cli@latest run @aqaranewbiz/mysql-aqara --config '{"host":"localhost","user":"<YOUR_USER>","password":"<YOUR_PASSWORD>","database":"<YOUR_DATABASE>"}'
      ```
 
 ## Security Considerations

@@ -23,6 +23,9 @@ Environment:
   PYTHONPATH: {os.environ.get('PYTHONPATH', 'Not set')}
   PYTHONUNBUFFERED: {os.environ.get('PYTHONUNBUFFERED', 'Not set')}
   DOCKER: {os.environ.get('DOCKER', 'Not set')}
+  DB_HOST: {os.environ.get('DB_HOST', 'Not set')}
+  DB_USER: {os.environ.get('DB_USER', 'Not set')}
+  DB_DATABASE: {os.environ.get('DB_DATABASE', 'Not set')}
 =================================================
 """)
 sys.stderr.flush()
@@ -48,6 +51,19 @@ KEEP_ALIVE_INTERVAL = 10  # seconds, reduced from 30
 TIMEOUT = 300  # seconds
 running = True
 initialized = False
+
+# Check for environment variables
+if all(k in os.environ for k in ['DB_HOST', 'DB_USER', 'DB_PASSWORD', 'DB_DATABASE']):
+    logger.info("Found database connection parameters in environment variables")
+    db_config = {
+        'host': os.environ['DB_HOST'],
+        'user': os.environ['DB_USER'],
+        'password': os.environ['DB_PASSWORD'],
+        'database': os.environ['DB_DATABASE'],
+        'charset': 'utf8mb4',
+        'collation': 'utf8mb4_general_ci'
+    }
+    logger.info(f"Using database: {db_config['host']}/{db_config['database']} as {db_config['user']}")
 
 # Log startup information
 logger.info(f"MCP Server starting up. Python version: {platform.python_version()}")
@@ -427,6 +443,17 @@ def main():
     logger.info("Initializing server...")
     sys.stderr.write("Server initializing...\n")
     sys.stderr.flush()
+    
+    # Connect to database if environment variables are set
+    if db_config:
+        logger.info("Trying to connect to database with environment variables...")
+        try:
+            conn = mysql.connector.connect(**db_config)
+            conn.close()
+            logger.info("Successfully connected to database with environment variables")
+        except Error as e:
+            logger.error(f"Failed to connect with environment variables: {e}")
+            db_config = None
     
     # Start keep-alive thread
     keep_alive = threading.Thread(target=keep_alive_thread)
