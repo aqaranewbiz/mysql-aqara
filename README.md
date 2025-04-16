@@ -1,5 +1,7 @@
 # MySQL MCP Server for Smithery
 
+[![smithery badge](https://smithery.ai/badge/@aqaranewbiz/mysql-aqara)](https://smithery.ai/server/@aqaranewbiz/mysql-aqara)
+
 A MySQL MCP server implementation for Smithery that allows direct database operations.
 
 ## Installation
@@ -14,6 +16,14 @@ npm install -g @aqaranewbiz/mysql-aqara
 2. Or install locally:
 ```bash
 npm install @aqaranewbiz/mysql-aqara
+```
+
+### Installing via Smithery
+
+To install MySQL Database Server for Claude Desktop automatically via [Smithery](https://smithery.ai/server/@aqaranewbiz/mysql-aqara):
+
+```bash
+npx -y @smithery/cli install @aqaranewbiz/mysql-aqara --client claude
 ```
 
 ### Manual Installation
@@ -146,4 +156,4 @@ MIT
 
 ## Contact
 
-If you have any questions, please create an issue. 
+If you have any questions, please create an issue.
