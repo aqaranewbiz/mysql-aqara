@@ -6,6 +6,7 @@ build:
   dockerfile: Dockerfile
   context: .
   disableCache: false
+  logLevel: "verbose"  # Add verbose logging for build process
 
 startCommand:
   type: stdio
@@ -34,4 +35,10 @@ startCommand:
   interactive: true
   command:
     - "node"
-    - "./run.js" 
+    - "./run.js"
+  env:
+    DOCKER: "true"
+    PYTHONUNBUFFERED: "1"
+    PYTHONIOENCODING: "utf-8"
+    NODE_ENV: "production"
+    DEBUG: "true" 

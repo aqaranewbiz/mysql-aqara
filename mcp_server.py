@@ -6,16 +6,39 @@ import time
 import mysql.connector
 from mysql.connector import Error
 import logging
+import traceback
 from datetime import datetime
 import threading
+import platform
+
+# Print startup message to stderr
+sys.stderr.write(f"""
+=== MCP MySQL Server Debugging Information ===
+Python version: {platform.python_version()}
+Platform: {platform.platform()}
+Current directory: {os.getcwd()}
+Executable path: {sys.executable}
+Arguments: {sys.argv}
+Environment:
+  PYTHONPATH: {os.environ.get('PYTHONPATH', 'Not set')}
+  PYTHONUNBUFFERED: {os.environ.get('PYTHONUNBUFFERED', 'Not set')}
+  DOCKER: {os.environ.get('DOCKER', 'Not set')}
+=================================================
+""")
+sys.stderr.flush()
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG if os.environ.get('DEBUG') else logging.INFO,
     format='%(asctime)s [%(name)s] [%(levelname)s] %(message)s',
     datefmt='%Y-%m-%dT%H:%M:%S.%fZ'
 )
 logger = logging.getLogger('mysql-aqara')
+
+# Add stderr handler for improved Docker logging
+stderr_handler = logging.StreamHandler(sys.stderr)
+stderr_handler.setFormatter(logging.Formatter('%(asctime)s [%(name)s] [%(levelname)s] %(message)s'))
+logger.addHandler(stderr_handler)
 
 # Global variables
 db_config = None
@@ -25,6 +48,11 @@ KEEP_ALIVE_INTERVAL = 10  # seconds, reduced from 30
 TIMEOUT = 300  # seconds
 running = True
 initialized = False
+
+# Log startup information
+logger.info(f"MCP Server starting up. Python version: {platform.python_version()}")
+logger.info(f"Current working directory: {os.getcwd()}")
+logger.info(f"Script path: {os.path.abspath(__file__)}")
 
 def signal_handler(signum, frame):
     """Handle termination signals"""
@@ -37,12 +65,14 @@ def signal_handler(signum, frame):
 def cleanup():
     """Cleanup resources before exit"""
     global db_connection
+    logger.debug("Performing cleanup...")
     if db_connection:
         try:
             db_connection.close()
             logger.info("Database connection closed")
         except Error as e:
             logger.error(f"Error closing database connection: {e}")
+    logger.info("Cleanup completed")
 
 def keep_alive_thread():
     """Background thread to send keep-alive messages"""
@@ -83,24 +113,37 @@ def connect_db(host, user, password, database):
     """Establish a connection to the MySQL database"""
     global db_config, db_connection
     try:
+        logger.info(f"Connecting to database at {host}/{database} as {user}")
         db_config = {
             'host': host,
             'user': user,
-            'password': password,
+            'password': '********',  # Masked for logging
             'database': database,
             'charset': 'utf8mb4',
             'collation': 'utf8mb4_general_ci'
         }
         
+        # Create the actual config with real password
+        real_config = db_config.copy()
+        real_config['password'] = password
+        
         # Test the connection
-        test_conn = mysql.connector.connect(**db_config)
+        logger.debug("Testing database connection...")
+        test_conn = mysql.connector.connect(**real_config)
         test_conn.close()
+        
+        # Save the config with real password for future use
+        db_config = real_config
         
         logger.info("Database connection established successfully")
         return {"success": True, "message": "Connected to database successfully"}
     except Error as e:
-        logger.error(f"Database connection error: {e}", exc_info=True)
-        return {"success": False, "error": str(e)}
+        error_details = str(e)
+        logger.error(f"Database connection error: {error_details}", exc_info=True)
+        return {"success": False, "error": error_details}
+    except Exception as e:
+        logger.error(f"Unexpected error connecting to database: {str(e)}", exc_info=True)
+        return {"success": False, "error": f"Unexpected error: {str(e)}"}
 
 def create_or_modify_table(table_name, columns, unique_keys=None):
     """Create or modify a table"""
@@ -362,6 +405,7 @@ def handle_request(request):
     except Exception as e:
         logger.error(f"Error handling request: {e}", exc_info=True)
         sys.stderr.write(f"Error handling request: {str(e)}\n")
+        traceback.print_exc(file=sys.stderr)
         sys.stderr.flush()
         
         error_response = {
@@ -394,6 +438,10 @@ def main():
         sys.stderr.write("Server started successfully\n")
         sys.stderr.flush()
         
+        # Describe available tools
+        tools = ["connect_db", "create_or_modify_table", "query", "execute", "list_tables", "describe_table"]
+        logger.info(f"Available tools: {', '.join(tools)}")
+        
         # Main loop
         while running:
             try:
@@ -418,6 +466,7 @@ def main():
             except Exception as e:
                 logger.error(f"Error in main loop: {e}", exc_info=True)
                 sys.stderr.write(f"Main loop error: {str(e)}\n")
+                traceback.print_exc(file=sys.stderr)
                 sys.stderr.flush()
                 continue
     
@@ -426,6 +475,7 @@ def main():
     except Exception as e:
         logger.error(f"Server error: {e}", exc_info=True)
         sys.stderr.write(f"Server error: {str(e)}\n")
+        traceback.print_exc(file=sys.stderr)
         sys.stderr.flush()
     finally:
         cleanup()
