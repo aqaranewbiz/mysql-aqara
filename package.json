@@ -1,7 +1,7 @@
 {
-  "name": "@aqaranewbiz/mysql-aqara",
+  "name": "mysql-aqara",
   "version": "1.0.0",
-  "description": "MySQL MCP server for Smithery - Database query and management tools",
+  "description": "MySQL MCP server for Smithery",
   "bin": {
     "mysql-aqara": "./bin/mysql-aqara"
   },
@@ -12,8 +12,7 @@
     "requirements.txt"
   ],
   "scripts": {
-    "start": "node run.js",
-    "postinstall": "pip install -r requirements.txt"
+    "start": "python mcp_server.py"
   },
   "keywords": [
     "mcp",
@@ -34,5 +33,9 @@
   "publishConfig": {
     "access": "public"
   },
-  "mcp-server": true
+  "mcp": {
+    "type": "local",
+    "command": "node run.js"
+  },
+  "dependencies": {}
 } 
