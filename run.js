@@ -18,8 +18,13 @@ if (!fs.existsSync(pythonScript)) {
   process.exit(1);
 }
 
-// Detect Python command - try multiple options
+// In Docker, we know python is installed as specified in Dockerfile
+const isDocker = fs.existsSync('/.dockerenv') || process.env.DOCKER;
+const pythonCmd = isDocker ? 'python' : detectPythonCommand();
+
+// Detect Python command for non-Docker environments
 function detectPythonCommand() {
+  console.error('Detecting Python command...');
   const commands = process.platform === 'win32' 
     ? ['python', 'py'] 
     : ['python3', 'python'];
@@ -40,8 +45,6 @@ function detectPythonCommand() {
   return 'python';
 }
 
-const pythonCmd = detectPythonCommand();
-
 // Environment setup
 const env = {
   ...process.env,
@@ -50,7 +53,7 @@ const env = {
 };
 
 // Spawn Python process
-console.error('Starting MCP server...');
+console.error(`Starting MCP server with Python command: ${pythonCmd}`);
 try {
   const pythonProcess = spawn(pythonCmd, [pythonScript], {
     stdio: ['pipe', 'pipe', 'pipe'],

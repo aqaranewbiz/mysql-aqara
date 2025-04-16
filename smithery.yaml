@@ -1,10 +1,11 @@
 name: "@aqaranewbiz/mysql-aqara"
 description: MySQL MCP server for Smithery - Database query and management tools
-version: 1.0.0
+version: "1.0.0"
 
 build:
   dockerfile: Dockerfile
   context: .
+  disableCache: false
 
 startCommand:
   type: stdio
@@ -32,5 +33,5 @@ startCommand:
         description: MySQL database name
   interactive: true
   command:
-    - node
-    - ./run.js 
+    - "node"
+    - "./run.js" 
