@@ -1,5 +1,5 @@
 {
-  "name": "mysql-aqara",
+  "name": "@aqaranewbiz/mysql-aqara",
   "version": "1.0.0",
   "description": "MySQL MCP server for Smithery",
   "main": "mcp_server.py",
@@ -7,13 +7,18 @@
     "mcp-mysql-server": "./run.js"
   },
   "scripts": {
-    "start": "node ./run.js"
+    "start": "node ./run.js",
+    "postinstall": "pip install -r requirements.txt"
   },
   "mcp": {
     "type": "local",
-    "command": "node ./run.js"
+    "command": "node ./run.js",
+    "promptConfig": true
   },
-  "dependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aqaralife/portal"
+  },
   "keywords": [
     "smithery",
     "mcp",
@@ -21,5 +26,11 @@
     "database"
   ],
   "author": "Aqara Newbiz",
-  "license": "MIT"
+  "license": "MIT",
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "dependencies": {
+    "mysql-connector-python": ">=8.0.0"
+  }
 } 

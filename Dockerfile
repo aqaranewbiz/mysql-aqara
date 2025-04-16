@@ -1,18 +1,23 @@
-FROM python:3.11-alpine
+FROM python:3.9-slim
 
-# Install system dependencies and Node.js
-RUN apk add --no-cache gcc musl-dev linux-headers nodejs npm
+# Install Node.js
+RUN apt-get update && apt-get install -y \
+    nodejs \
+    npm \
+    && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
 WORKDIR /app
 
-# Copy requirements first to leverage Docker cache
-COPY requirements.txt .
+# Copy package files
+COPY package.json ./
+COPY requirements.txt ./
 
-# Install Python dependencies
+# Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
+RUN npm install
 
-# Copy the rest of the application
+# Copy application files
 COPY . .
 
 # Make run.js executable
@@ -22,5 +27,5 @@ RUN chmod +x run.js
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONIOENCODING=utf-8
 
-# Run the MCP server via Node.js
+# Command to run the MCP server
 CMD ["node", "run.js"] 

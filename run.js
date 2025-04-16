@@ -2,109 +2,125 @@
 
 const { spawn } = require('child_process');
 const path = require('path');
+const fs = require('fs');
 
-// Get the directory of this script
+// Get script directory
 const scriptDir = path.dirname(__filename);
+console.error(`Script directory: ${scriptDir}`);
 
-// Path to the Python script
+// Path to Python script
 const pythonScript = path.join(scriptDir, 'mcp_server.py');
-
-console.error('Starting MySQL MCP server...');
 console.error(`Python script path: ${pythonScript}`);
 
-// Determine Python executable
-const pythonExecutable = process.platform === 'win32' ? 'python' : 'python3';
+// Check if Python script exists
+if (!fs.existsSync(pythonScript)) {
+  console.error(`Error: Python script not found at ${pythonScript}`);
+  process.exit(1);
+}
 
-// Spawn Python process with unbuffered output
-const pythonProcess = spawn(pythonExecutable, ['-u', pythonScript], {
-  stdio: ['pipe', 'pipe', 'pipe'],
-  env: {
-    ...process.env,
-    PYTHONUNBUFFERED: '1',
-    PYTHONIOENCODING: 'utf-8'
+// Detect Python command - try multiple options
+function detectPythonCommand() {
+  const commands = process.platform === 'win32' 
+    ? ['python', 'py'] 
+    : ['python3', 'python'];
+  
+  for (const cmd of commands) {
+    try {
+      const result = require('child_process').spawnSync(cmd, ['--version']);
+      if (result.status === 0) {
+        console.error(`Found Python command: ${cmd}`);
+        return cmd;
+      }
+    } catch (err) {
+      // Command not found, try next
+    }
   }
-});
+  
+  console.error('No Python command found. Defaulting to "python"');
+  return 'python';
+}
 
-console.error(`Started Python process with PID: ${pythonProcess.pid}`);
+const pythonCmd = detectPythonCommand();
 
-// Set up buffers for line processing
-let stdoutBuffer = '';
-let stderrBuffer = '';
+// Environment setup
+const env = {
+  ...process.env,
+  PYTHONUNBUFFERED: '1',
+  PYTHONIOENCODING: 'utf-8'
+};
 
-// Handle process errors
-pythonProcess.on('error', (err) => {
+// Spawn Python process
+console.error('Starting MCP server...');
+try {
+  const pythonProcess = spawn(pythonCmd, [pythonScript], {
+    stdio: ['pipe', 'pipe', 'pipe'],
+    env
+  });
+
+  console.error(`Python process started with PID: ${pythonProcess.pid}`);
+
+  // Handle stdout
+  pythonProcess.stdout.on('data', (data) => {
+    try {
+      process.stdout.write(data);
+    } catch (err) {
+      console.error('Error writing to stdout:', err);
+    }
+  });
+
+  // Handle stderr
+  pythonProcess.stderr.on('data', (data) => {
+    try {
+      console.error(`[Python] ${data.toString().trim()}`);
+    } catch (err) {
+      console.error('Error writing to stderr:', err);
+    }
+  });
+
+  // Handle errors
+  pythonProcess.on('error', (err) => {
+    console.error('Failed to start Python process:', err);
+    process.exit(1);
+  });
+
+  // Handle process exit
+  pythonProcess.on('exit', (code, signal) => {
+    if (signal) {
+      console.error(`Python process was killed with signal: ${signal}`);
+      process.exit(1);
+    }
+    
+    if (code !== 0) {
+      console.error(`Python process exited with code ${code}`);
+      process.exit(code);
+    }
+    
+    console.error('Python process exited normally');
+    process.exit(0);
+  });
+
+  // Pipe stdin to Python process
+  process.stdin.pipe(pythonProcess.stdin);
+
+  // Handle signals
+  process.on('SIGINT', () => {
+    console.error('Received SIGINT, terminating Python process...');
+    pythonProcess.kill('SIGINT');
+  });
+
+  process.on('SIGTERM', () => {
+    console.error('Received SIGTERM, terminating Python process...');
+    pythonProcess.kill('SIGTERM');
+  });
+  
+  // Handle uncaught exceptions
+  process.on('uncaughtException', (err) => {
+    console.error('Uncaught exception:', err);
+    pythonProcess.kill('SIGTERM');
+    process.exit(1);
+  });
+  
+} catch (err) {
   console.error('Failed to start Python process:', err);
   process.exit(1);
-});
-
-// Handle process exit
-pythonProcess.on('exit', (code, signal) => {
-  if (signal) {
-    console.error(`Python process was killed with signal: ${signal}`);
-    process.exit(1);
-  }
-  
-  if (code !== 0) {
-    console.error(`Python process exited with code ${code}`);
-    process.exit(code);
-  }
-  
-  console.error('Python process exited normally');
-});
-
-// Process stdout line by line
-pythonProcess.stdout.on('data', (data) => {
-  stdoutBuffer += data.toString();
-  
-  let newlineIndex;
-  while ((newlineIndex = stdoutBuffer.indexOf('\n')) !== -1) {
-    const line = stdoutBuffer.substring(0, newlineIndex);
-    stdoutBuffer = stdoutBuffer.substring(newlineIndex + 1);
-    
-    // Output to process.stdout
-    process.stdout.write(line + '\n');
-  }
-});
-
-// Process stderr for logging
-pythonProcess.stderr.on('data', (data) => {
-  stderrBuffer += data.toString();
-  
-  let newlineIndex;
-  while ((newlineIndex = stderrBuffer.indexOf('\n')) !== -1) {
-    const line = stderrBuffer.substring(0, newlineIndex);
-    stderrBuffer = stderrBuffer.substring(newlineIndex + 1);
-    
-    // Output to process.stderr
-    console.error(`[Python] ${line}`);
-  }
-});
-
-// Process stdin for input
-process.stdin.on('data', (data) => {
-  try {
-    pythonProcess.stdin.write(data);
-  } catch (err) {
-    console.error('Error writing to Python process:', err);
-  }
-});
-
-// Handle process closing
-process.stdin.on('end', () => {
-  try {
-    pythonProcess.stdin.end();
-  } catch (err) {
-    console.error('Error ending Python stdin:', err);
-  }
-});
-
-// Handle signals
-process.on('SIGINT', () => {
-  console.error('Received SIGINT, terminating Python process...');
-  pythonProcess.kill('SIGINT');
-});
-
-process.on('SIGTERM', () => {
-  console.error('Received SIGTERM, terminating Python process...');
-  pythonProcess.kill('SIGTERM');
-}); 
+} 

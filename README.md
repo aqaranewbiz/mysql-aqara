@@ -8,12 +8,12 @@ A MySQL MCP server implementation for Smithery that allows direct database opera
 
 1. Install globally:
 ```bash
-npm install -g mysql-aqara
+npm install -g @aqaranewbiz/mysql-aqara
 ```
 
 2. Or install locally:
 ```bash
-npm install mysql-aqara
+npm install @aqaranewbiz/mysql-aqara
 ```
 
 ### Manual Installation
@@ -38,7 +38,7 @@ mcp-mysql-server
 
 ### Local Installation
 ```bash
-npx mysql-aqara
+npx @aqaranewbiz/mysql-aqara
 ```
 
 ### Direct Execution
@@ -46,13 +46,23 @@ npx mysql-aqara
 node run.js
 ```
 
+### Using with Smithery CLI
+
+```bash
+# Use Interactive Prompt (Recommended)
+npx @smithery/cli@latest run @aqaranewbiz/mysql-aqara
+
+# Or provide config as JSON (replace with your own values)
+npx @smithery/cli@latest run @aqaranewbiz/mysql-aqara --config '{"host":"<YOUR_HOST>","user":"<YOUR_USER>","password":"<YOUR_PASSWORD>","database":"<YOUR_DATABASE>"}'
+```
+
 ## Configuration
 
 The server requires database credentials to be provided during the initial connection. You will be prompted to enter:
-- Host
-- User
-- Password
-- Database name
+- Host (usually "localhost" or an IP address)
+- User (your database username)
+- Password (your database user's password)
+- Database name (the name of the database you want to connect to)
 
 ## Available Tools
 
@@ -114,6 +124,21 @@ If you encounter any issues with server connection:
    - Verify your MySQL connection parameters
    - Ensure MySQL server is running and accessible
    - Check firewall rules allowing the connection
+
+6. When using Smithery CLI with the --config parameter:
+   - Use single quotes around the JSON object
+   - Use double quotes for the JSON property names and values
+   - Do not include spaces in the JSON string
+   - Example:
+     ```bash
+     npx @smithery/cli@latest run @aqaranewbiz/mysql-aqara --config '{"host":"localhost","user":"<YOUR_USER>","password":"<YOUR_PASSWORD>","database":"<YOUR_DATABASE>"}'
+     ```
+
+## Security Considerations
+
+- Never commit real database credentials to version control
+- Use environment variables or config files for sensitive data when possible
+- The `password` parameter is sensitive - be careful when logging or displaying it
 
 ## License
 
