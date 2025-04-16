@@ -1,15 +1,11 @@
-name: "@aqaranewbiz/mysql-aqara"
-description: MySQL MCP server for Smithery - Database query and management tools
-version: "1.0.0"
+# Smithery configuration file: https://smithery.ai/docs/config#smitheryyaml
 
 build:
   dockerfile: Dockerfile
-  context: .
-  disableCache: false
-
 startCommand:
   type: stdio
   configSchema:
+    # JSON Schema defining the configuration options for the MCP.
     type: object
     required:
       - host
@@ -20,18 +16,23 @@ startCommand:
       host:
         type: string
         description: MySQL server host address
-        default: "localhost"
       user:
         type: string
         description: MySQL user name
-      password:
-        type: string
-        description: MySQL user password
-        secret: true
       database:
         type: string
         description: MySQL database name
-  interactive: true
-  command:
-    - "node"
-    - "./run.js" 
+      password:
+        type: string
+        description: MySQL user password
+  commandFunction:
+    # A JS function that produces the CLI command based on the given config to start the MCP on stdio.
+    |
+    (config) => ({
+      command: "node",
+      args: ["./run.js"],
+      env: {
+        PYTHONUNBUFFERED: "1",
+        PYTHONIOENCODING: "utf-8"
+      }
+    })
