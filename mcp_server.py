@@ -7,6 +7,7 @@ import mysql.connector
 from mysql.connector import Error
 import logging
 from datetime import datetime
+import threading
 
 # Configure logging
 logging.basicConfig(
@@ -20,43 +21,63 @@ logger = logging.getLogger('mysql-aqara')
 db_config = None
 db_connection = None
 last_activity_time = time.time()
-KEEP_ALIVE_INTERVAL = 30  # seconds
-TIMEOUT = 300  # seconds (increased from 60 to 300)
+KEEP_ALIVE_INTERVAL = 10  # seconds, reduced from 30
+TIMEOUT = 300  # seconds
+running = True
+initialized = False
 
 def signal_handler(signum, frame):
     """Handle termination signals"""
-    logger.info("Received termination signal, cleaning up...")
+    global running
+    logger.info(f"Received termination signal {signum}, cleaning up...")
+    running = False
     cleanup()
     sys.exit(0)
 
 def cleanup():
     """Cleanup resources before exit"""
-    if db_config:
+    global db_connection
+    if db_connection:
         try:
-            conn = mysql.connector.connect(**db_config)
-            conn.close()
+            db_connection.close()
             logger.info("Database connection closed")
         except Error as e:
             logger.error(f"Error closing database connection: {e}")
 
-def check_timeout():
-    """Check if the connection has timed out"""
-    current_time = time.time()
-    if current_time - last_activity_time > TIMEOUT:
-        logger.warning("Connection timeout detected")
-        return True
-    return False
+def keep_alive_thread():
+    """Background thread to send keep-alive messages"""
+    global running, last_activity_time
+    logger.info("Keep alive thread started")
+    
+    while running:
+        try:
+            current_time = time.time()
+            elapsed = current_time - last_activity_time
+            
+            if elapsed > KEEP_ALIVE_INTERVAL:
+                logger.info(f"Sending keep-alive after {elapsed:.1f}s of inactivity")
+                send_keep_alive()
+                
+            time.sleep(1)
+        except Exception as e:
+            logger.error(f"Error in keep-alive thread: {e}", exc_info=True)
 
 def send_keep_alive():
     """Send keep-alive message to prevent timeout"""
     global last_activity_time
     last_activity_time = time.time()
-    response = {
-        "jsonrpc": "2.0",
-        "method": "keepAlive",
-        "params": {"timestamp": datetime.utcnow().isoformat()}
-    }
-    print(json.dumps(response), flush=True)
+    
+    try:
+        response = {
+            "jsonrpc": "2.0",
+            "method": "$/alive",
+            "params": {"timestamp": datetime.utcnow().isoformat()}
+        }
+        print(json.dumps(response), flush=True)
+        sys.stderr.write("Keep-alive sent\n")
+        sys.stderr.flush()
+    except Exception as e:
+        logger.error(f"Error sending keep-alive: {e}", exc_info=True)
 
 def connect_db(host, user, password, database):
     """Establish a connection to the MySQL database"""
@@ -81,7 +102,7 @@ def connect_db(host, user, password, database):
         logger.error(f"Database connection error: {e}", exc_info=True)
         return {"success": False, "error": str(e)}
 
-def create_or_modify_table(table_name, columns):
+def create_or_modify_table(table_name, columns, unique_keys=None):
     """Create or modify a table"""
     if not db_config:
         return {"success": False, "error": "Database not connected"}
@@ -107,6 +128,11 @@ def create_or_modify_table(table_name, columns):
                 col_def += " PRIMARY KEY"
             column_defs.append(col_def)
         
+        # Add unique keys if provided
+        if unique_keys:
+            for key in unique_keys:
+                column_defs.append(f"UNIQUE KEY {key['name']} ({key['columns']})")
+        
         create_table_sql = f"CREATE TABLE {table_name} ({', '.join(column_defs)})"
         cursor.execute(create_table_sql)
         
@@ -120,7 +146,7 @@ def create_or_modify_table(table_name, columns):
         logger.error(f"Error creating/modifying table: {e}")
         return {"success": False, "error": str(e)}
 
-def execute_query(query):
+def execute_query(sql, params=None):
     """Execute a SELECT query"""
     if not db_config:
         return {"success": False, "error": "Database not connected"}
@@ -128,18 +154,23 @@ def execute_query(query):
     try:
         conn = mysql.connector.connect(**db_config)
         cursor = conn.cursor(dictionary=True)
-        cursor.execute(query)
+        
+        if params:
+            cursor.execute(sql, params)
+        else:
+            cursor.execute(sql)
+            
         results = cursor.fetchall()
         cursor.close()
         conn.close()
         
-        logger.info(f"Query executed successfully: {query}")
+        logger.info(f"Query executed successfully: {sql}")
         return {"success": True, "results": results}
     except Error as e:
         logger.error(f"Error executing query: {e}")
         return {"success": False, "error": str(e)}
 
-def execute_command(query):
+def execute_command(sql, params=None):
     """Execute INSERT, UPDATE, or DELETE queries"""
     if not db_config:
         return {"success": False, "error": "Database not connected"}
@@ -147,13 +178,18 @@ def execute_command(query):
     try:
         conn = mysql.connector.connect(**db_config)
         cursor = conn.cursor()
-        cursor.execute(query)
+        
+        if params:
+            cursor.execute(sql, params)
+        else:
+            cursor.execute(sql)
+            
         affected_rows = cursor.rowcount
         conn.commit()
         cursor.close()
         conn.close()
         
-        logger.info(f"Command executed successfully: {query}")
+        logger.info(f"Command executed successfully: {sql}")
         return {"success": True, "affected_rows": affected_rows}
     except Error as e:
         logger.error(f"Error executing command: {e}")
@@ -199,18 +235,32 @@ def describe_table(table_name):
 
 def handle_request(request):
     """Handle incoming MCP requests"""
+    global last_activity_time, initialized
+    last_activity_time = time.time()
+    
     try:
         if not isinstance(request, dict):
-            request = json.loads(request)
+            try:
+                request = json.loads(request)
+            except json.JSONDecodeError as e:
+                logger.error(f"Invalid JSON request: {e}")
+                sys.stderr.write(f"Invalid JSON request: {request}\n")
+                sys.stderr.flush()
+                return
         
         method = request.get('method')
         params = request.get('params', {})
         request_id = request.get('id')
         
+        logger.info(f"Received request: method={method}, id={request_id}")
+        sys.stderr.write(f"Received request: method={method}, id={request_id}\n")
+        sys.stderr.flush()
+        
         # Handle initialization request
         if method == "initialize":
             logger.info("Handling initialize request")
-            return {
+            initialized = True
+            response = {
                 "jsonrpc": "2.0",
                 "id": request_id,
                 "result": {
@@ -228,13 +278,66 @@ def handle_request(request):
                     }
                 }
             }
+            print(json.dumps(response), flush=True)
+            
+            # Also log to stderr for debugging
+            sys.stderr.write("Sent initialize response\n")
+            sys.stderr.flush()
+            return
         
-        # Handle tool requests
+        # Handle initialized notification
+        if method == "initialized":
+            logger.info("Received initialized notification")
+            sys.stderr.write("Received initialized notification\n")
+            sys.stderr.flush()
+            return
+        
+        # Handle shutdown request
+        if method == "shutdown":
+            logger.info("Received shutdown request")
+            response = {
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "result": None
+            }
+            print(json.dumps(response), flush=True)
+            return
+        
+        # Handle exit notification
+        if method == "exit":
+            logger.info("Received exit notification")
+            cleanup()
+            sys.exit(0)
+        
+        # Handle tool requests - only if initialized
+        if not initialized:
+            logger.error("Received tool request before initialization")
+            error_response = {
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "error": {
+                    "code": -32002,
+                    "message": "Server not initialized"
+                }
+            }
+            print(json.dumps(error_response), flush=True)
+            return
+            
         tool_name = method
         
-        if tool_name not in ["connect_db", "create_or_modify_table", "execute_query", "execute_command", "list_tables", "describe_table"]:
+        # Map tool names from mcp.json to python functions
+        tool_mapping = {
+            "connect_db": connect_db,
+            "create_or_modify_table": create_or_modify_table,
+            "query": execute_query,
+            "execute": execute_command,
+            "list_tables": list_tables,
+            "describe_table": describe_table
+        }
+        
+        if tool_name not in tool_mapping:
             logger.error(f"Unknown tool: {tool_name}")
-            return {
+            response = {
                 "jsonrpc": "2.0",
                 "id": request_id,
                 "error": {
@@ -242,26 +345,34 @@ def handle_request(request):
                     "message": f"Method not found: {tool_name}"
                 }
             }
+        else:
+            # Execute the tool
+            logger.info(f"Executing tool: {tool_name}")
+            result = tool_mapping[tool_name](**params)
+            response = {
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "result": result
+            }
         
-        # Execute the tool
-        result = globals()[tool_name](**params)
-        
-        return {
-            "jsonrpc": "2.0",
-            "id": request_id,
-            "result": result
-        }
+        print(json.dumps(response), flush=True)
+        sys.stderr.write(f"Sent response for {tool_name}\n")
+        sys.stderr.flush()
         
     except Exception as e:
         logger.error(f"Error handling request: {e}", exc_info=True)
-        return {
+        sys.stderr.write(f"Error handling request: {str(e)}\n")
+        sys.stderr.flush()
+        
+        error_response = {
             "jsonrpc": "2.0",
-            "id": request_id,
+            "id": request.get('id') if isinstance(request, dict) else None,
             "error": {
-                "code": -32603,
-                "message": f"Internal error: {str(e)}"
+                "code": -32000,
+                "message": str(e)
             }
         }
+        print(json.dumps(error_response), flush=True)
 
 def main():
     """Main entry point"""
@@ -269,50 +380,53 @@ def main():
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
     
-    logger.info("MySQL MCP Server starting...")
+    logger.info("Initializing server...")
+    sys.stderr.write("Server initializing...\n")
+    sys.stderr.flush()
     
-    # Keep-alive timer
-    last_keep_alive = time.time()
+    # Start keep-alive thread
+    keep_alive = threading.Thread(target=keep_alive_thread)
+    keep_alive.daemon = True
+    keep_alive.start()
     
     try:
-        while True:
-            # Check for timeout
-            if check_timeout():
-                logger.warning("Connection timed out, exiting...")
-                break
-            
-            # Send keep-alive if needed
-            current_time = time.time()
-            if current_time - last_keep_alive >= KEEP_ALIVE_INTERVAL:
-                send_keep_alive()
-                last_keep_alive = current_time
-            
-            # Read request from stdin
+        logger.info("Server started and connected successfully")
+        sys.stderr.write("Server started successfully\n")
+        sys.stderr.flush()
+        
+        # Main loop
+        while running:
             try:
                 line = sys.stdin.readline()
                 if not line:
-                    logger.warning("End of input stream, exiting...")
+                    logger.info("End of input stream detected")
+                    sys.stderr.write("End of input stream detected\n")
+                    sys.stderr.flush()
                     break
                 
+                sys.stderr.write(f"Received data: {line[:50]}...\n")
+                sys.stderr.flush()
+                    
                 request = line.strip()
-                response = handle_request(request)
+                handle_request(request)
                 
-                # Send response
-                print(json.dumps(response), flush=True)
-                
+            except json.JSONDecodeError as e:
+                logger.error(f"Invalid JSON received: {e}")
+                sys.stderr.write(f"Invalid JSON: {e}\n")
+                sys.stderr.flush()
+                continue
             except Exception as e:
-                logger.error(f"Error processing request: {e}", exc_info=True)
-                # Send error response
-                error_response = {
-                    "jsonrpc": "2.0",
-                    "id": None,
-                    "error": {
-                        "code": -32603,
-                        "message": f"Internal error: {str(e)}"
-                    }
-                }
-                print(json.dumps(error_response), flush=True)
+                logger.error(f"Error in main loop: {e}", exc_info=True)
+                sys.stderr.write(f"Main loop error: {str(e)}\n")
+                sys.stderr.flush()
+                continue
     
+    except KeyboardInterrupt:
+        logger.info("Server interrupted by user")
+    except Exception as e:
+        logger.error(f"Server error: {e}", exc_info=True)
+        sys.stderr.write(f"Server error: {str(e)}\n")
+        sys.stderr.flush()
     finally:
         cleanup()
 
