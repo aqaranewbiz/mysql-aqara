@@ -4,15 +4,16 @@
   "description": "MySQL MCP server for Smithery",
   "main": "mcp_server.py",
   "bin": {
-    "mcp-mysql-server": "./run.js"
+    "mysql-aqara": "./run.js"
   },
   "scripts": {
-    "start": "python mcp_server.py",
+    "start": "node ./run.js",
     "postinstall": "pip install -r requirements.txt"
   },
   "mcp": {
     "type": "local",
     "command": "node ./run.js",
+    "localInstallation": true,
     "tools": {
       "connect_db": {
         "description": "Establish connection to MySQL database using provided credentials",

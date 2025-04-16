@@ -1,6 +1,13 @@
-name: "@aqaranewbiz/mysql-aqara"
-description: MySQL MCP server for Smithery - Database query and management tools
+name: "mysql-aqara"
+displayName: "MySQL Database MCP Server"
+description: "MySQL MCP server for Smithery - Database query and management tools"
 version: "1.0.0"
+license: "MIT"
+
+installation:
+  type: "npm"
+  package: "mysql-aqara"
+  local: true
 
 build:
   dockerfile: Dockerfile

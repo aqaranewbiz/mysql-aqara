@@ -4,17 +4,11 @@ A MySQL MCP server implementation for Smithery that allows direct database opera
 
 ## Installation
 
-### One-Click Installation
+### One-Click Installation with Smithery
 
-1. Install globally:
-```bash
-npm install -g @aqaranewbiz/mysql-aqara
-```
-
-2. Or install locally:
-```bash
-npm install @aqaranewbiz/mysql-aqara
-```
+1. In Smithery, select "Add MCP Server"
+2. Use package name: `mysql-aqara`
+3. Smithery will automatically install and configure the server
 
 ### Manual Installation
 
@@ -31,14 +25,16 @@ chmod +x run.js
 
 ## Usage
 
-### Global Installation
-```bash
-mcp-mysql-server
-```
+### With Smithery
+The server will automatically be available in Smithery after installation.
 
-### Local Installation
+### Command Line
 ```bash
-npx @aqaranewbiz/mysql-aqara
+# If installed globally
+mysql-aqara
+
+# If installed locally
+npx mysql-aqara
 ```
 
 ### Direct Execution
@@ -47,13 +43,12 @@ node run.js
 ```
 
 ### Using with Smithery CLI
-
 ```bash
 # Use Interactive Prompt (Recommended)
-npx @smithery/cli@latest run @aqaranewbiz/mysql-aqara
+npx @smithery/cli@latest run mysql-aqara
 
 # Or provide config as JSON (replace with your own values)
-npx @smithery/cli@latest run @aqaranewbiz/mysql-aqara --config '{"host":"<YOUR_HOST>","user":"<YOUR_USER>","password":"<YOUR_PASSWORD>","database":"<YOUR_DATABASE>"}'
+npx @smithery/cli@latest run mysql-aqara --config '{"host":"<YOUR_HOST>","user":"<YOUR_USER>","password":"<YOUR_PASSWORD>","database":"<YOUR_DATABASE>"}'
 ```
 
 ## Configuration
@@ -125,13 +120,18 @@ If you encounter any issues with server connection:
    - Ensure MySQL server is running and accessible
    - Check firewall rules allowing the connection
 
-6. When using Smithery CLI with the --config parameter:
+6. If you see the error "This server works best locally, but does not have a local installation option":
+   - Make sure the server is installed with the correct package name: `mysql-aqara`
+   - Check that the package.json and mcp.json files have the property `localInstallation: true`
+   - Ensure the mcp.json, package.json, and smithery.yaml files all use the same package name
+
+7. When using Smithery CLI with the --config parameter:
    - Use single quotes around the JSON object
    - Use double quotes for the JSON property names and values
    - Do not include spaces in the JSON string
    - Example:
      ```bash
-     npx @smithery/cli@latest run @aqaranewbiz/mysql-aqara --config '{"host":"localhost","user":"<YOUR_USER>","password":"<YOUR_PASSWORD>","database":"<YOUR_DATABASE>"}'
+     npx @smithery/cli@latest run mysql-aqara --config '{"host":"localhost","user":"<YOUR_USER>","password":"<YOUR_PASSWORD>","database":"<YOUR_DATABASE>"}'
      ```
 
 ## Security Considerations
