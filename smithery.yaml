@@ -36,6 +36,16 @@ startCommand:
     SMITHERY_SETTING_USER: "{{ settings.user }}"
     SMITHERY_SETTING_PASSWORD: "{{ settings.password }}"
     SMITHERY_SETTING_DATABASE: "{{ settings.database }}"
+
+deployment:
+  type: "docker"
+  dockerfile: "./Dockerfile"
+  healthCheck:
+    path: "/"
+    timeout: 30
+  resources:
+    memory: "512Mi"
+    cpu: "0.5"
     
 tools:
   connect_db:

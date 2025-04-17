@@ -7,7 +7,7 @@
     "mysql-aqara": "./index.js"
   },
   "scripts": {
-    "start": "python mcp_server.py"
+    "start": "node index.js"
   },
   "settings": {
     "configurable": true,
@@ -158,7 +158,16 @@
   ],
   "author": "Aqara",
   "license": "MIT",
-  "dependencies": {
-    "mysql-connector-python": ">=8.0.0"
+  "deployment": {
+    "type": "docker",
+    "dockerfile": "./Dockerfile",
+    "healthCheck": {
+      "path": "/",
+      "timeout": 30
+    },
+    "resources": {
+      "memory": "512Mi",
+      "cpu": "0.5"
+    }
   }
 } 
