@@ -22,6 +22,12 @@ if (!fs.existsSync(localMarkerFile)) {
   }
 }
 
+// Log current process info
+console.error(`Process ID: ${process.pid}`);
+console.error(`Node version: ${process.version}`);
+console.error(`Current directory: ${process.cwd()}`);
+console.error(`Script path: ${__filename}`);
+
 let pool = null;
 let dbConfig = null;
 
@@ -35,6 +41,10 @@ function getConfigFromEnv() {
   const user = process.env.mysqlUser || process.env.MYSQL_USER;
   const password = process.env.mysqlPassword || process.env.MYSQL_PASSWORD;
   const database = process.env.mysqlDatabase || process.env.MYSQL_DATABASE;
+  
+  if (host) console.error(`Using host from environment: ${host}`);
+  if (user) console.error(`Using user from environment: ${user}`);
+  if (database) console.error(`Using database from environment: ${database}`);
   
   return { host, user, password, database };
 }
@@ -63,6 +73,8 @@ async function createConnectionPool(config) {
     // Test the connection
     const conn = await pool.getConnection();
     conn.release();
+    
+    console.error('Database connection successful');
     
     dbConfig = config;
     return { success: true, message: "Connected to database successfully" };
@@ -211,15 +223,72 @@ async function describeTable(table) {
  * Start the MCP server
  */
 async function startServer() {
-  const server = new Server(
-    {
-      name: "mysql-aqara",
-      version: "1.0.0",
-    },
-    {
-      capabilities: {
-        tools: {},
+  // Server information and metadata
+  const serverInfo = {
+    name: "mysql-aqara",
+    version: "1.0.0",
+    displayName: "MySQL Database Server",
+    description: "MySQL MCP server for Smithery - Database query and management tools",
+    repository: "https://github.com/aqaralife/portal"
+  };
+  
+  // Connection configuration schema
+  const configSchema = {
+    type: "object",
+    properties: {
+      mysqlHost: {
+        type: "string",
+        description: "MySQL server host address",
+        default: "localhost"
       },
+      mysqlUser: {
+        type: "string",
+        description: "MySQL user name"
+      },
+      mysqlPassword: {
+        type: "string",
+        description: "MySQL user password",
+        format: "password"
+      },
+      mysqlDatabase: {
+        type: "string",
+        description: "MySQL database name (optional)"
+      }
+    },
+    required: ["mysqlHost", "mysqlUser", "mysqlPassword"]
+  };
+  
+  // Server capabilities
+  const serverCapabilities = {
+    configSchema: configSchema, // <-- This should appear in Overview tab
+    tools: {
+      connect_db: {
+        description: "Establish connection to MySQL database using provided credentials"
+      },
+      create_or_modify_table: {
+        description: "Create or modify a database table"
+      },
+      query: {
+        description: "Execute SELECT queries with optional prepared statement parameters"
+      },
+      execute: {
+        description: "Execute INSERT, UPDATE, or DELETE queries with optional prepared statement parameters"
+      },
+      list_tables: {
+        description: "List all tables in the connected database"
+      },
+      describe_table: {
+        description: "Get the structure of a specific table"
+      }
+    }
+  };
+  
+  console.error('Creating server with config schema:', JSON.stringify(configSchema, null, 2));
+  
+  const server = new Server(
+    serverInfo,
+    {
+      capabilities: serverCapabilities
     }
   );
   
