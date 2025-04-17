@@ -4,40 +4,29 @@
   "description": "MySQL MCP server for Smithery",
   "main": "index.js",
   "bin": {
-    "mysql-aqara": "./bin/mysql-aqara"
+    "mysql-aqara": "./index.js"
   },
-  "files": [
-    "bin",
-    "index.js"
-  ],
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "install-requirements": "pip install -r requirements.txt"
+  },
+  "mcp": {
+    "type": "node",
+    "command": "mysql-aqara"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aqaranewbiz/mysql-aqaranewbiz.git"
   },
   "keywords": [
-    "mcp",
-    "model-context-protocol",
-    "smithery",
     "mysql",
-    "database"
+    "mcp",
+    "smithery"
   ],
-  "author": "Aqara Newbiz",
+  "author": "aqaranewbiz",
   "license": "MIT",
   "engines": {
     "node": ">=14.0.0"
   },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/aqaralife/portal"
-  },
-  "publishConfig": {
-    "access": "public"
-  },
-  "mcp": {
-    "type": "local",
-    "command": "node index.js"
-  },
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "^0.6.0",
-    "mysql2": "^3.6.0"
-  }
+  "dependencies": {}
 } 

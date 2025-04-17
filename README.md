@@ -1,141 +1,129 @@
 # MySQL MCP Server for Smithery
 
-A MySQL MCP server implementation for Smithery that allows direct database operations.
+A MySQL connector for Smithery that allows you to connect to your MySQL database directly from Smithery.
 
-## Installation
+## One-Click Installation
 
-### One-Click Installation with Smithery
+### Global Installation
+```bash
+npm install -g mysql-aqara
+```
 
-1. In Smithery, select "Add MCP Server"
-2. Use package name: `mysql-aqara`
-3. Smithery will automatically install and configure the server
+### Local Installation
+```bash
+npm install mysql-aqara
+```
 
-### Manual Installation
+## Manual Installation
 
-1. Clone the repository
+1. Clone this repository:
+```bash
+git clone https://github.com/aqaranewbiz/mysql-aqara.git
+```
+
 2. Install dependencies:
 ```bash
-pip install -r requirements.txt
+cd mysql-aqara
 npm install
+pip install -r requirements.txt
 ```
-3. Make the necessary files executable:
+
+3. Make the run.js file executable (Unix/Linux/Mac):
 ```bash
-chmod +x bin/mysql-aqara
 chmod +x run.js
 ```
 
 ## Usage
 
-### With Smithery
-The server will automatically be available in Smithery after installation.
-
-### Command Line
+### Using Global Installation
 ```bash
-# If installed globally
-npx mysql-aqara
+mysql-aqara
+```
 
-# If installed locally
+### Using Local Installation
+```bash
+npx mysql-aqara
+```
+
+### Direct Execution
+```bash
 node run.js
 ```
 
-### Using with Smithery CLI
-```bash
-# Use Interactive Prompt (Recommended)
-npx @smithery/cli@latest run mysql-aqara
+## Features
 
-# Or provide config as JSON (replace with your own values)
-npx @smithery/cli@latest run mysql-aqara --config '{"mysqlHost":"<YOUR_HOST>","mysqlUser":"<YOUR_USER>","mysqlPassword":"<YOUR_PASSWORD>","mysqlDatabase":"<YOUR_DATABASE>"}'
-```
+- **Smart Path Detection**: Automatically finds the Python script in various locations
+- **Cross-Platform Support**: Works on Windows, macOS, and Linux
+- **Automatic Python Detection**: Uses `python3` or `python` depending on your system
+- **Automatic Requirements Installation**: Installs required Python packages on startup
+- **Improved Error Handling**: Better feedback for troubleshooting
 
 ## Configuration
 
-The server requires database credentials to be provided during the initial connection. You will be prompted to enter:
-- Host (usually "localhost" or an IP address)
-- User (your database username)
-- Password (your database user's password)
-- Database name (the name of the database you want to connect to)
+No environment variables required! When connecting to a database, you'll need to provide:
+
+- **host**: Database server hostname or IP address
+- **user**: Database username
+- **password**: Database password
+- **database**: Database name
 
 ## Available Tools
 
-1. `connect_db`: Establish a connection to the MySQL database
-   - Parameters:
-     - host: Database host
-     - user: Database user
-     - password: Database password
-     - database: Database name
+### connect_db
+Establishes a connection to the MySQL database.
 
-2. `create_or_modify_table`: Create or modify a table
-   - Parameters:
-     - table_name: Name of the table
-     - columns: Array of column definitions
-     - unique_keys: (optional) Array of unique key definitions
+**Parameters:**
+- **host**: Database server hostname
+- **user**: Database username
+- **password**: Database password
+- **database**: Database name
 
-3. `execute_query`: Execute a SELECT query (equivalent to the `query` method in mcp.json)
-   - Parameters:
-     - sql: SQL query string
-     - params: (optional) Array of parameters for prepared statements
+### create_or_modify_table
+Creates a new table or modifies an existing one.
 
-4. `execute_command`: Execute INSERT, UPDATE, or DELETE queries (equivalent to the `execute` method in mcp.json)
-   - Parameters:
-     - sql: SQL command string
-     - params: (optional) Array of parameters for prepared statements
+**Parameters:**
+- **table_name**: Name of the table
+- **columns**: Array of column definitions
 
-5. `list_tables`: List all tables in the database
-   - No parameters required
+### execute_query
+Executes a SELECT query on the database.
 
-6. `describe_table`: Get the structure of a table
-   - Parameters:
-     - table: Name of the table
+**Parameters:**
+- **query**: SQL SELECT query
+- **params** (optional): Parameters for the query
+
+### execute_command
+Executes an INSERT, UPDATE, or DELETE query.
+
+**Parameters:**
+- **command**: SQL command to execute
+- **params** (optional): Parameters for the command
+
+### list_tables
+Lists all tables in the connected database.
+
+**Parameters:** None
+
+### describe_table
+Gets the structure of a specific table.
+
+**Parameters:**
+- **table_name**: Name of the table to describe
 
 ## Troubleshooting
 
-If you encounter any issues with server connection:
+If you encounter issues:
 
-1. Verify that Python and Node.js are installed and in your PATH:
+1. **Python Not Found**: The server will automatically detect `python3` or `python`. If neither works, ensure Python is installed and in your PATH.
+
+2. **Missing Modules**: The server will attempt to install required packages automatically. If this fails, manually run:
    ```bash
-   python --version
-   node --version
+   pip install mysql-connector-python>=8.0.0
    ```
 
-2. Check that the required Python packages are installed:
-   ```bash
-   pip install -r requirements.txt
-   ```
+3. **Connection Issues**: Verify your database credentials and ensure the MySQL server is running and accessible.
 
-3. Ensure the necessary files have execution permissions:
-   ```bash
-   chmod +x bin/mysql-aqara
-   chmod +x run.js
-   ```
-
-4. Check for errors in the server logs:
-   - Look for messages with `[error]` level
-   - Check for Python exceptions in stderr output
-
-5. If the server disconnects immediately after initialization:
-   - Verify your MySQL connection parameters
-   - Ensure MySQL server is running and accessible
-   - Check firewall rules allowing the connection
-
-6. If you see the error "This server works best locally, but does not have a local installation option":
-   - Make sure the `.mcp-server` file contains only `mysql-aqara`
-   - Make sure all configuration files have the same package name
-   - Remove any node_modules or package-lock.json and reinstall
-
-7. When using Smithery CLI with the --config parameter:
-   - Use single quotes around the JSON object
-   - Use double quotes for the JSON property names and values
-   - Do not include spaces in the JSON string
-   - Example:
-     ```bash
-     npx @smithery/cli@latest run mysql-aqara --config '{"mysqlHost":"localhost","mysqlUser":"<YOUR_USER>","mysqlPassword":"<YOUR_PASSWORD>","mysqlDatabase":"<YOUR_DATABASE>"}'
-     ```
-
-## Security Considerations
-
-- Never commit real database credentials to version control
-- Use environment variables or config files for sensitive data when possible
-- The `password` parameter is sensitive - be careful when logging or displaying it
+4. **Script Path Issues**: The server checks multiple locations for the Python script. If it can't find it, ensure the `mcp_server.py` file is in the same directory as `index.js` or in the current working directory.
 
 ## License
 

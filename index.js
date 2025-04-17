@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 // MySQL MCP Server for Smithery
 // This file exists to make the package compatible with npm
-// The actual server is started by run.js
 
 const { Server } = require('@modelcontextprotocol/sdk/server/index.js');
 const { StdioServerTransport } = require('@modelcontextprotocol/sdk/server/stdio.js');
@@ -9,6 +8,8 @@ const { CallToolRequestSchema, ErrorCode, ListToolsRequestSchema, McpError } = r
 const mysql = require('mysql2/promise');
 const fs = require('fs');
 const path = require('path');
+const { spawn, exec } = require('child_process');
+const { MCP } = require('@modelcontextprotocol/sdk');
 
 // Create a special .local file to tell Smithery this is a local MCP
 const scriptDir = path.dirname(__filename);
@@ -28,462 +29,256 @@ console.error(`Node version: ${process.version}`);
 console.error(`Current directory: ${process.cwd()}`);
 console.error(`Script path: ${__filename}`);
 
+// Configuration
+const USE_PYTHON = true; // Set to false to use the Node.js implementation
+const PORT = process.env.MCP_PORT || 14000;
+
+// Global connection pool variable for Node.js implementation
 let pool = null;
-let dbConfig = null;
 
-/**
- * Get configuration from environment variables
- */
-function getConfigFromEnv() {
-  // Get configuration from environment variables
-  // Supports both MYSQL_* and mysql* naming conventions
-  const host = process.env.mysqlHost || process.env.MYSQL_HOST;
-  const user = process.env.mysqlUser || process.env.MYSQL_USER;
-  const password = process.env.mysqlPassword || process.env.MYSQL_PASSWORD;
-  const database = process.env.mysqlDatabase || process.env.MYSQL_DATABASE;
-  
-  if (host) console.error(`Using host from environment: ${host}`);
-  if (user) console.error(`Using user from environment: ${user}`);
-  if (database) console.error(`Using database from environment: ${database}`);
-  
-  return { host, user, password, database };
-}
+// Get the directory where this script is located
+const scriptDir = __dirname;
 
-/**
- * Create a connection pool
- */
-async function createConnectionPool(config) {
-  if (!config.host || !config.user || !config.password) {
-    return { success: false, error: "Missing database connection parameters" };
+// Python implementation
+if (USE_PYTHON) {
+  console.log('Starting MySQL MCP server using Python implementation...');
+  
+  // Determine the script's directory
+  const mcp_server_path = path.join(scriptDir, 'mcp_server.py');
+  const requirements_path = path.join(scriptDir, 'requirements.txt');
+  
+  // Function to check if Python is installed and get its version
+  function getPythonCommand() {
+    return new Promise((resolve, reject) => {
+      // Try 'python3' first (common on macOS and Linux)
+      exec('python3 --version', (error) => {
+        if (!error) {
+          resolve('python3');
+          return;
+        }
+        
+        // Try 'python' next (common on Windows)
+        exec('python --version', (error) => {
+          if (!error) {
+            resolve('python');
+            return;
+          }
+          
+          // If neither worked, Python is not installed or not in PATH
+          reject(new Error('Python is not installed or not in PATH. Please install Python 3.6 or later.'));
+        });
+      });
+    });
   }
-  
-  try {
-    console.error(`Connecting to MySQL at ${config.host} as ${config.user}`);
+
+  // Function to check and install requirements
+  function installRequirements(pythonCmd) {
+    return new Promise((resolve, reject) => {
+      console.log('Checking Python requirements...');
+      
+      // Check if requirements.txt exists
+      if (!fs.existsSync(requirements_path)) {
+        console.error(`Error: requirements.txt not found at ${requirements_path}`);
+        reject(new Error('Requirements file not found'));
+        return;
+      }
+      
+      const install = spawn(pythonCmd, ['-m', 'pip', 'install', '-r', requirements_path]);
+      
+      install.stdout.on('data', (data) => {
+        console.log(`${data}`);
+      });
+      
+      install.stderr.on('data', (data) => {
+        console.error(`${data}`);
+      });
+      
+      install.on('close', (code) => {
+        if (code !== 0) {
+          reject(new Error(`Failed to install requirements (exit code: ${code})`));
+          return;
+        }
+        console.log('Requirements installed successfully');
+        resolve();
+      });
+    });
+  }
+
+  // Function to start the MCP server
+  function startServer(pythonCmd) {
+    console.log(`Starting MCP server using ${pythonCmd}...`);
+    console.log(`Server script path: ${mcp_server_path}`);
     
-    pool = mysql.createPool({
-      host: config.host,
-      user: config.user,
-      password: config.password,
-      database: config.database,
-      waitForConnections: true,
-      connectionLimit: 10,
-      queueLimit: 0
+    // Check if the server script exists
+    if (!fs.existsSync(mcp_server_path)) {
+      console.error(`Error: MCP server script not found at ${mcp_server_path}`);
+      process.exit(1);
+    }
+    
+    const serverProcess = spawn(pythonCmd, [mcp_server_path]);
+    
+    serverProcess.stdout.on('data', (data) => {
+      console.log(`${data}`);
     });
     
-    // Test the connection
-    const conn = await pool.getConnection();
-    conn.release();
+    serverProcess.stderr.on('data', (data) => {
+      console.error(`${data}`);
+    });
     
-    console.error('Database connection successful');
-    
-    dbConfig = config;
-    return { success: true, message: "Connected to database successfully" };
-  } catch (error) {
-    console.error("Database connection error:", error);
-    return { success: false, error: error.message };
-  }
-}
-
-/**
- * Create or modify a table
- */
-async function createOrModifyTable(table_name, columns, unique_keys = []) {
-  if (!pool) {
-    return { success: false, error: "Database not connected" };
-  }
-  
-  let connection;
-  try {
-    connection = await pool.getConnection();
-    
-    // Drop existing table if it exists
-    await connection.execute(`DROP TABLE IF EXISTS ${table_name}`);
-    
-    // Create new table
-    const columnDefs = [];
-    for (const col of columns) {
-      let colDef = `${col.name} ${col.type}`;
-      if (col.not_null) colDef += " NOT NULL";
-      if (col.default !== undefined) colDef += ` DEFAULT ${col.default}`;
-      if (col.auto_increment) colDef += " AUTO_INCREMENT";
-      if (col.primary_key) colDef += " PRIMARY KEY";
-      columnDefs.push(colDef);
-    }
-    
-    // Add unique keys if provided
-    if (unique_keys && unique_keys.length > 0) {
-      for (const key of unique_keys) {
-        columnDefs.push(`UNIQUE KEY ${key.name} (${key.columns})`);
+    serverProcess.on('close', (code) => {
+      if (code !== 0) {
+        console.error(`MCP server process exited with code ${code}`);
       }
-    }
+      process.exit(code);
+    });
     
-    const createTableSql = `CREATE TABLE ${table_name} (${columnDefs.join(', ')})`;
-    await connection.execute(createTableSql);
+    // Handle process termination signals
+    process.on('SIGINT', () => {
+      console.log('Received SIGINT. Shutting down MCP server...');
+      serverProcess.kill('SIGINT');
+    });
     
-    return { success: true, message: `Table ${table_name} created/modified successfully` };
-  } catch (error) {
-    console.error("Error creating/modifying table:", error);
-    return { success: false, error: error.message };
-  } finally {
-    if (connection) connection.release();
+    process.on('SIGTERM', () => {
+      console.log('Received SIGTERM. Shutting down MCP server...');
+      serverProcess.kill('SIGTERM');
+    });
   }
-}
 
-/**
- * Execute a SELECT query
- */
-async function executeQuery(sql, params = []) {
-  if (!pool) {
-    return { success: false, error: "Database not connected" };
-  }
-  
-  let connection;
-  try {
-    connection = await pool.getConnection();
-    
-    const [rows] = await connection.execute(sql, params);
-    return { success: true, results: rows };
-  } catch (error) {
-    console.error("Error executing query:", error);
-    return { success: false, error: error.message };
-  } finally {
-    if (connection) connection.release();
-  }
-}
-
-/**
- * Execute a non-SELECT query (INSERT, UPDATE, DELETE)
- */
-async function executeCommand(sql, params = []) {
-  if (!pool) {
-    return { success: false, error: "Database not connected" };
-  }
-  
-  let connection;
-  try {
-    connection = await pool.getConnection();
-    
-    const [result] = await connection.execute(sql, params);
-    return { success: true, affected_rows: result.affectedRows };
-  } catch (error) {
-    console.error("Error executing command:", error);
-    return { success: false, error: error.message };
-  } finally {
-    if (connection) connection.release();
-  }
-}
-
-/**
- * List tables in the database
- */
-async function listTables() {
-  if (!pool) {
-    return { success: false, error: "Database not connected" };
-  }
-  
-  let connection;
-  try {
-    connection = await pool.getConnection();
-    
-    const [rows] = await connection.execute('SHOW TABLES');
-    const tables = rows.map(row => Object.values(row)[0]);
-    
-    return { success: true, tables };
-  } catch (error) {
-    console.error("Error listing tables:", error);
-    return { success: false, error: error.message };
-  } finally {
-    if (connection) connection.release();
-  }
-}
-
-/**
- * Describe a table's structure
- */
-async function describeTable(table) {
-  if (!pool) {
-    return { success: false, error: "Database not connected" };
-  }
-  
-  let connection;
-  try {
-    connection = await pool.getConnection();
-    
-    const [rows] = await connection.execute(`DESCRIBE ${table}`);
-    return { success: true, columns: rows };
-  } catch (error) {
-    console.error("Error describing table:", error);
-    return { success: false, error: error.message };
-  } finally {
-    if (connection) connection.release();
-  }
-}
-
-/**
- * Start the MCP server
- */
-async function startServer() {
-  // Server information and metadata
-  const serverInfo = {
-    name: "mysql-aqara",
-    version: "1.0.0",
-    displayName: "MySQL Database Server",
-    description: "MySQL MCP server for Smithery - Database query and management tools",
-    repository: "https://github.com/aqaralife/portal"
-  };
-  
-  // Connection configuration schema
-  const configSchema = {
-    type: "object",
-    properties: {
-      mysqlHost: {
-        type: "string",
-        description: "MySQL server host address",
-        default: "localhost"
-      },
-      mysqlUser: {
-        type: "string",
-        description: "MySQL user name"
-      },
-      mysqlPassword: {
-        type: "string",
-        description: "MySQL user password",
-        format: "password"
-      },
-      mysqlDatabase: {
-        type: "string",
-        description: "MySQL database name (optional)"
-      }
-    },
-    required: ["mysqlHost", "mysqlUser", "mysqlPassword"]
-  };
-  
-  // Server capabilities
-  const serverCapabilities = {
-    configSchema: configSchema, // <-- This should appear in Overview tab
-    tools: {
-      connect_db: {
-        description: "Establish connection to MySQL database using provided credentials"
-      },
-      create_or_modify_table: {
-        description: "Create or modify a database table"
-      },
-      query: {
-        description: "Execute SELECT queries with optional prepared statement parameters"
-      },
-      execute: {
-        description: "Execute INSERT, UPDATE, or DELETE queries with optional prepared statement parameters"
-      },
-      list_tables: {
-        description: "List all tables in the connected database"
-      },
-      describe_table: {
-        description: "Get the structure of a specific table"
-      }
-    }
-  };
-  
-  console.error('Creating server with config schema:', JSON.stringify(configSchema, null, 2));
-  
-  const server = new Server(
-    serverInfo,
-    {
-      capabilities: serverCapabilities
-    }
-  );
-  
-  // Handle list_tools request
-  server.setRequestHandler(ListToolsRequestSchema, async () => {
-    return {
-      tools: [
-        {
-          name: "connect_db",
-          description: "Establish connection to MySQL database using provided credentials",
-          inputSchema: {
-            type: "object",
-            properties: {
-              host: {
-                type: "string",
-                description: "Database host"
-              },
-              user: {
-                type: "string",
-                description: "Database user"
-              },
-              password: {
-                type: "string",
-                description: "Database password"
-              },
-              database: {
-                type: "string",
-                description: "Database name"
-              }
-            },
-            required: ["host", "user", "password"]
-          }
-        },
-        {
-          name: "create_or_modify_table",
-          description: "Create or modify a database table",
-          inputSchema: {
-            type: "object",
-            properties: {
-              table_name: {
-                type: "string",
-                description: "Name of the table to create or modify"
-              },
-              columns: {
-                type: "array",
-                description: "Array of column definitions with name, type, and options"
-              },
-              unique_keys: {
-                type: "array",
-                description: "Array of unique key definitions with name and columns"
-              }
-            },
-            required: ["table_name", "columns"]
-          }
-        },
-        {
-          name: "query",
-          description: "Execute SELECT queries with optional prepared statement parameters",
-          inputSchema: {
-            type: "object",
-            properties: {
-              sql: {
-                type: "string",
-                description: "SQL query string"
-              },
-              params: {
-                type: "array",
-                description: "Query parameters for prepared statement"
-              }
-            },
-            required: ["sql"]
-          }
-        },
-        {
-          name: "execute",
-          description: "Execute INSERT, UPDATE, or DELETE queries with optional prepared statement parameters",
-          inputSchema: {
-            type: "object",
-            properties: {
-              sql: {
-                type: "string",
-                description: "SQL query string"
-              },
-              params: {
-                type: "array",
-                description: "Query parameters for prepared statement"
-              }
-            },
-            required: ["sql"]
-          }
-        },
-        {
-          name: "list_tables",
-          description: "List all tables in the connected database",
-          inputSchema: {
-            type: "object",
-            properties: {}
-          }
-        },
-        {
-          name: "describe_table",
-          description: "Get the structure of a specific table",
-          inputSchema: {
-            type: "object",
-            properties: {
-              table: {
-                type: "string",
-                description: "Table name"
-              }
-            },
-            required: ["table"]
-          }
-        }
-      ]
-    };
-  });
-  
-  // Handle tool call requests
-  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  // Main function to run the server
+  async function main() {
     try {
-      const toolName = request.params.name;
-      const args = request.params.arguments || {};
+      // Get the appropriate Python command
+      const pythonCmd = await getPythonCommand();
+      console.log(`Found Python command: ${pythonCmd}`);
       
-      console.error(`[Tool Call] ${toolName}`, args);
+      // Install requirements
+      await installRequirements(pythonCmd);
       
-      // Try to connect with environment variables if not already connected
-      if (!pool && toolName !== 'connect_db') {
-        const envConfig = getConfigFromEnv();
-        if (envConfig.host && envConfig.user && envConfig.password) {
-          console.error('Attempting auto-connection with environment variables');
-          await createConnectionPool(envConfig);
-        }
-      }
-      
-      switch (toolName) {
-        case 'connect_db':
-          const result = await createConnectionPool(args);
-          return { content: [{ type: 'text', text: JSON.stringify(result) }] };
-          
-        case 'create_or_modify_table':
-          const createResult = await createOrModifyTable(
-            args.table_name,
-            args.columns,
-            args.unique_keys
-          );
-          return { content: [{ type: 'text', text: JSON.stringify(createResult) }] };
-          
-        case 'query':
-          const queryResult = await executeQuery(args.sql, args.params || []);
-          return { content: [{ type: 'text', text: JSON.stringify(queryResult) }] };
-          
-        case 'execute':
-          const execResult = await executeCommand(args.sql, args.params || []);
-          return { content: [{ type: 'text', text: JSON.stringify(execResult) }] };
-          
-        case 'list_tables':
-          const tables = await listTables();
-          return { content: [{ type: 'text', text: JSON.stringify(tables) }] };
-          
-        case 'describe_table':
-          const tableInfo = await describeTable(args.table);
-          return { content: [{ type: 'text', text: JSON.stringify(tableInfo) }] };
-          
-        default:
-          throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${toolName}`);
-      }
+      // Start the server
+      startServer(pythonCmd);
     } catch (error) {
-      console.error('[Error]', error);
-      return {
-        content: [{ type: 'text', text: `Error: ${error.message || error}` }],
-        isError: true
-      };
+      console.error(`Error: ${error.message}`);
+      process.exit(1);
     }
-  });
-  
-  try {
-    console.error('[Setup] Starting MySQL MCP server');
-    const transport = new StdioServerTransport();
-    await server.connect(transport);
-    console.error('[Setup] MySQL MCP server running on stdio');
-    
-    // Check for environment credentials and try to connect
-    const envConfig = getConfigFromEnv();
-    if (envConfig.host && envConfig.user && envConfig.password) {
-      console.error('Found database credentials in environment');
-      await createConnectionPool(envConfig);
-    }
-  } catch (error) {
-    console.error('[Fatal] Server error:', error);
-    process.exit(1);
   }
-}
 
-// Start the server
-startServer().catch(err => {
-  console.error('Unhandled error:', err);
-  process.exit(1);
-}); 
+  // Run the main function
+  main();
+} 
+// Node.js implementation
+else {
+  console.log('Starting MySQL MCP server using Node.js implementation...');
+
+  // Create MCP server
+  const server = new MCP.Server({
+    port: PORT,
+    name: 'mysql-aqara',
+    version: '1.0.0',
+  });
+
+  // Connect to database
+  async function connectDb(host, user, password, database) {
+    try {
+      // Close existing pool if it exists
+      if (pool) {
+        await pool.end();
+      }
+
+      // Create a new connection pool
+      pool = mysql.createPool({
+        host,
+        user,
+        password,
+        database,
+        waitForConnections: true,
+        connectionLimit: 10,
+        queueLimit: 0
+      });
+
+      // Test the connection
+      await pool.query('SELECT 1');
+      return { success: true, message: 'Connected to database successfully' };
+    } catch (error) {
+      console.error('Error connecting to database:', error);
+      return { success: false, message: error.message };
+    }
+  }
+
+  // Execute a query
+  async function executeQuery(query, params = []) {
+    if (!pool) {
+      return { success: false, message: 'Database not connected. Use connect_db first.' };
+    }
+
+    try {
+      const [rows] = await pool.query(query, params);
+      return { success: true, result: rows };
+    } catch (error) {
+      console.error('Error executing query:', error);
+      return { success: false, message: error.message };
+    }
+  }
+
+  // List tables in the database
+  async function listTables() {
+    if (!pool) {
+      return { success: false, message: 'Database not connected. Use connect_db first.' };
+    }
+
+    try {
+      const [rows] = await pool.query('SHOW TABLES');
+      return { success: true, tables: rows.map(row => Object.values(row)[0]) };
+    } catch (error) {
+      console.error('Error listing tables:', error);
+      return { success: false, message: error.message };
+    }
+  }
+
+  // Describe a table structure
+  async function describeTable(tableName) {
+    if (!pool) {
+      return { success: false, message: 'Database not connected. Use connect_db first.' };
+    }
+
+    try {
+      const [rows] = await pool.query('DESCRIBE ??', [tableName]);
+      return { success: true, structure: rows };
+    } catch (error) {
+      console.error(`Error describing table ${tableName}:`, error);
+      return { success: false, message: error.message };
+    }
+  }
+
+  // Register tools
+  server.addTool('connect_db', connectDb);
+  server.addTool('query', executeQuery);
+  server.addTool('execute', executeQuery);
+  server.addTool('list_tables', listTables);
+  server.addTool('describe_table', describeTable);
+
+  // Start the server
+  server.start().then(() => {
+    console.log(`MySQL MCP server is running on port ${PORT}`);
+  }).catch(err => {
+    console.error('Failed to start MCP server:', err);
+  });
+
+  // Handle signals for graceful shutdown
+  process.on('SIGINT', async () => {
+    console.log('Received SIGINT, shutting down...');
+    if (pool) {
+      await pool.end();
+    }
+    server.stop();
+    process.exit(0);
+  });
+
+  process.on('SIGTERM', async () => {
+    console.log('Received SIGTERM, shutting down...');
+    if (pool) {
+      await pool.end();
+    }
+    server.stop();
+    process.exit(0);
+  });
+} 

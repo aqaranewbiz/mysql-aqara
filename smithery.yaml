@@ -1,49 +1,111 @@
 # Smithery configuration file for MySQL MCP Server
 name: "mysql-aqara"
-displayName: "MySQL Database MCP Server"
 description: "MySQL MCP server for Smithery - Database query and management tools"
-version: "1.0.0"
-license: "MIT"
-
-installation:
-  type: "npm"
-  package: "mysql-aqara"
-  local: true
-  localPath: "."
-
-server:
-  type: "stdio"
+logo: "./logo.png"
 
 settings:
   configurable: true
   schema:
     type: object
     properties:
-      mysqlHost:
+      host:
         type: string
         description: "MySQL server host address"
         default: "localhost"
-      mysqlUser:
+      user:
         type: string
-        description: "MySQL user name"
-      mysqlPassword:
+        description: "MySQL username"
+      password:
         type: string
-        description: "MySQL user password"
-        format: "password"
-      mysqlDatabase:
+        description: "MySQL password"
+        format: password
+      database:
         type: string
         description: "MySQL database name (optional)"
     required:
-      - mysqlHost
-      - mysqlUser
-      - mysqlPassword
+      - host
+      - user
+      - password
 
 startCommand:
-  command:
-    - "node"
-    - "index.js"
-  env:
-    MYSQL_HOST: "$config.mysqlHost"
-    MYSQL_USER: "$config.mysqlUser"
-    MYSQL_PASSWORD: "$config.mysqlPassword"
-    MYSQL_DATABASE: "$config.mysqlDatabase" 
+  name: "Start MySQL server"
+  command: "python mcp_server.py"
+  background: true
+  environment:
+    MYSQL_HOST: "{{ settings.host }}"
+    MYSQL_USER: "{{ settings.user }}"
+    MYSQL_PASSWORD: "{{ settings.password }}"
+    MYSQL_DATABASE: "{{ settings.database }}"
+    
+tools:
+  connect_db:
+    description: "Connect to a MySQL database"
+    parameters:
+      properties:
+        host:
+          type: string
+          description: "Database host"
+          default: "localhost"
+        user:
+          type: string
+          description: "Database username"
+        password:
+          type: string
+          description: "Database password"
+          format: password
+        database:
+          type: string
+          description: "Database name (optional)"
+      required:
+        - host
+        - user
+        - password
+  create_or_modify_table:
+    description: "Create a new table or modify an existing table schema"
+    parameters:
+      properties:
+        query:
+          type: string
+          description: "CREATE TABLE or ALTER TABLE SQL query"
+        bind_vars:
+          type: object
+          description: "Optional bind variables for parameterized queries"
+      required:
+        - query
+  query:
+    description: "Execute a SELECT query"
+    parameters:
+      properties:
+        query:
+          type: string
+          description: "SELECT SQL query"
+        bind_vars:
+          type: object
+          description: "Optional bind variables for parameterized queries"
+      required:
+        - query
+  execute:
+    description: "Execute INSERT, UPDATE, or DELETE query"
+    parameters:
+      properties:
+        query:
+          type: string
+          description: "SQL query (INSERT, UPDATE, DELETE)"
+        bind_vars:
+          type: object
+          description: "Optional bind variables for parameterized queries"
+      required:
+        - query
+  list_tables:
+    description: "List all tables in the connected database"
+    parameters:
+      properties: {}
+  describe_table:
+    description: "Get the structure of a table"
+    parameters:
+      properties:
+        table_name:
+          type: string
+          description: "Name of the table to describe"
+      required:
+        - table_name 
