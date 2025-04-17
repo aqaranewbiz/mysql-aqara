@@ -1,7 +1,7 @@
 {
   "name": "mysql-aqara",
   "version": "1.0.0",
-  "description": "MySQL MCP server for Smithery",
+  "description": "MySQL MCP server for Smithery - Database query and management tools",
   "main": "index.js",
   "bin": {
     "mysql-aqara": "./index.js"
@@ -14,19 +14,54 @@
     "type": "node",
     "command": "mysql-aqara"
   },
+  "settings": {
+    "configurable": true,
+    "schema": {
+      "type": "object",
+      "properties": {
+        "host": {
+          "type": "string",
+          "description": "MySQL server host address",
+          "default": "localhost"
+        },
+        "user": {
+          "type": "string",
+          "description": "MySQL username"
+        },
+        "password": {
+          "type": "string",
+          "description": "MySQL password",
+          "format": "password"
+        },
+        "database": {
+          "type": "string",
+          "description": "MySQL database name (optional)"
+        }
+      },
+      "required": [
+        "host",
+        "user",
+        "password"
+      ]
+    }
+  },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/aqaranewbiz/mysql-aqaranewbiz.git"
+    "url": "https://github.com/aqaralife/mysql-mcp-smithery.git"
   },
   "keywords": [
     "mysql",
     "mcp",
-    "smithery"
+    "smithery",
+    "database"
   ],
-  "author": "aqaranewbiz",
+  "author": "Aqara",
   "license": "MIT",
   "engines": {
     "node": ">=14.0.0"
   },
-  "dependencies": {}
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "mysql2": "^3.0.0"
+  }
 } 

@@ -22,9 +22,9 @@ Arguments: {sys.argv}
 Environment:
   PYTHONPATH: {os.environ.get('PYTHONPATH', 'Not set')}
   PYTHONUNBUFFERED: {os.environ.get('PYTHONUNBUFFERED', 'Not set')}
-  DOCKER: {os.environ.get('DOCKER', 'Not set')}
   DB_HOST: {os.environ.get('DB_HOST', 'Not set')}
   DB_USER: {os.environ.get('DB_USER', 'Not set')}
+  DB_PASSWORD: {os.environ.get('DB_PASSWORD', 'Not set (length masked)' if os.environ.get('DB_PASSWORD') else 'Not set')}
   DB_DATABASE: {os.environ.get('DB_DATABASE', 'Not set')}
 =================================================
 """)
@@ -53,17 +53,26 @@ running = True
 initialized = False
 
 # Check for environment variables
-if all(k in os.environ for k in ['DB_HOST', 'DB_USER', 'DB_PASSWORD', 'DB_DATABASE']):
+if all(k in os.environ for k in ['DB_HOST', 'DB_USER', 'DB_PASSWORD']):
     logger.info("Found database connection parameters in environment variables")
     db_config = {
         'host': os.environ['DB_HOST'],
         'user': os.environ['DB_USER'],
         'password': os.environ['DB_PASSWORD'],
-        'database': os.environ['DB_DATABASE'],
+        'database': os.environ.get('DB_DATABASE', ''),  # Database is optional
         'charset': 'utf8mb4',
         'collation': 'utf8mb4_general_ci'
     }
-    logger.info(f"Using database: {db_config['host']}/{db_config['database']} as {db_config['user']}")
+    logger.info(f"Using database: {db_config['host']}/{db_config['database'] or 'None'} as {db_config['user']}")
+    # Try to auto-connect if environment variables are set
+    try:
+        if db_config['database']:  # Only if database name is provided
+            conn = mysql.connector.connect(**db_config)
+            db_connection = conn
+            logger.info("Auto-connected to database using environment variables")
+    except Error as e:
+        logger.error(f"Failed to auto-connect to database: {e}")
+        db_connection = None
 
 # Log startup information
 logger.info(f"MCP Server starting up. Python version: {platform.python_version()}")
@@ -125,7 +134,7 @@ def send_keep_alive():
     except Exception as e:
         logger.error(f"Error sending keep-alive: {e}", exc_info=True)
 
-def connect_db(host, user, password, database):
+def connect_db(host, user, password, database=""):
     """Establish a connection to the MySQL database"""
     global db_config, db_connection
     try:
@@ -133,23 +142,26 @@ def connect_db(host, user, password, database):
         db_config = {
             'host': host,
             'user': user,
-            'password': '********',  # Masked for logging
+            'password': password,
             'database': database,
             'charset': 'utf8mb4',
             'collation': 'utf8mb4_general_ci'
         }
         
-        # Create the actual config with real password
-        real_config = db_config.copy()
-        real_config['password'] = password
-        
         # Test the connection
         logger.debug("Testing database connection...")
-        test_conn = mysql.connector.connect(**real_config)
-        test_conn.close()
         
-        # Save the config with real password for future use
-        db_config = real_config
+        # Create connection with database if specified
+        if database:
+            test_conn = mysql.connector.connect(**db_config)
+        else:
+            # Connect without database
+            config_without_db = db_config.copy()
+            del config_without_db['database']
+            test_conn = mysql.connector.connect(**config_without_db)
+        
+        # Save the connection
+        db_connection = test_conn
         
         logger.info("Database connection established successfully")
         return {"success": True, "message": "Connected to database successfully"}
@@ -161,113 +173,101 @@ def connect_db(host, user, password, database):
         logger.error(f"Unexpected error connecting to database: {str(e)}", exc_info=True)
         return {"success": False, "error": f"Unexpected error: {str(e)}"}
 
-def create_or_modify_table(table_name, columns, unique_keys=None):
-    """Create or modify a table"""
-    if not db_config:
-        return {"success": False, "error": "Database not connected"}
+def create_or_modify_table(query, bind_vars=None):
+    """Create or modify a table with raw SQL"""
+    global db_connection
+    
+    if not db_connection:
+        error_msg = "Database not connected. Use connect_db first."
+        logger.error(error_msg)
+        return {"success": False, "error": error_msg}
     
     try:
-        conn = mysql.connector.connect(**db_config)
-        cursor = conn.cursor()
+        cursor = db_connection.cursor()
         
-        # Drop existing table if it exists
-        cursor.execute(f"DROP TABLE IF EXISTS {table_name}")
-        
-        # Create new table
-        column_defs = []
-        for col in columns:
-            col_def = f"{col['name']} {col['type']}"
-            if col.get('not_null'):
-                col_def += " NOT NULL"
-            if col.get('default'):
-                col_def += f" DEFAULT {col['default']}"
-            if col.get('auto_increment'):
-                col_def += " AUTO_INCREMENT"
-            if col.get('primary_key'):
-                col_def += " PRIMARY KEY"
-            column_defs.append(col_def)
-        
-        # Add unique keys if provided
-        if unique_keys:
-            for key in unique_keys:
-                column_defs.append(f"UNIQUE KEY {key['name']} ({key['columns']})")
-        
-        create_table_sql = f"CREATE TABLE {table_name} ({', '.join(column_defs)})"
-        cursor.execute(create_table_sql)
-        
-        conn.commit()
+        if bind_vars:
+            cursor.execute(query, bind_vars)
+        else:
+            cursor.execute(query)
+            
+        db_connection.commit()
         cursor.close()
-        conn.close()
         
-        logger.info(f"Table {table_name} created/modified successfully")
-        return {"success": True, "message": f"Table {table_name} created/modified successfully"}
+        logger.info(f"Table creation/modification query executed successfully")
+        return {"success": True, "message": "Query executed successfully"}
     except Error as e:
         logger.error(f"Error creating/modifying table: {e}")
         return {"success": False, "error": str(e)}
 
-def execute_query(sql, params=None):
+def execute_query(query, bind_vars=None):
     """Execute a SELECT query"""
-    if not db_config:
-        return {"success": False, "error": "Database not connected"}
+    global db_connection
+    
+    if not db_connection:
+        error_msg = "Database not connected. Use connect_db first."
+        logger.error(error_msg)
+        return {"success": False, "error": error_msg}
     
     try:
-        conn = mysql.connector.connect(**db_config)
-        cursor = conn.cursor(dictionary=True)
+        cursor = db_connection.cursor(dictionary=True)
         
-        if params:
-            cursor.execute(sql, params)
+        if bind_vars:
+            cursor.execute(query, bind_vars)
         else:
-            cursor.execute(sql)
+            cursor.execute(query)
             
         results = cursor.fetchall()
         cursor.close()
-        conn.close()
         
-        logger.info(f"Query executed successfully: {sql}")
+        logger.info(f"Query executed successfully: {query}")
         return {"success": True, "results": results}
     except Error as e:
         logger.error(f"Error executing query: {e}")
         return {"success": False, "error": str(e)}
 
-def execute_command(sql, params=None):
+def execute_command(query, bind_vars=None):
     """Execute INSERT, UPDATE, or DELETE queries"""
-    if not db_config:
-        return {"success": False, "error": "Database not connected"}
+    global db_connection
+    
+    if not db_connection:
+        error_msg = "Database not connected. Use connect_db first."
+        logger.error(error_msg)
+        return {"success": False, "error": error_msg}
     
     try:
-        conn = mysql.connector.connect(**db_config)
-        cursor = conn.cursor()
+        cursor = db_connection.cursor()
         
-        if params:
-            cursor.execute(sql, params)
+        if bind_vars:
+            cursor.execute(query, bind_vars)
         else:
-            cursor.execute(sql)
+            cursor.execute(query)
             
         affected_rows = cursor.rowcount
-        conn.commit()
+        db_connection.commit()
         cursor.close()
-        conn.close()
         
-        logger.info(f"Command executed successfully: {sql}")
+        logger.info(f"Command executed successfully: {query} (Affected rows: {affected_rows})")
         return {"success": True, "affected_rows": affected_rows}
     except Error as e:
         logger.error(f"Error executing command: {e}")
         return {"success": False, "error": str(e)}
 
 def list_tables():
-    """List all tables in the database"""
-    if not db_config:
-        return {"success": False, "error": "Database not connected"}
+    """List all tables in the connected database"""
+    global db_connection
+    
+    if not db_connection:
+        error_msg = "Database not connected. Use connect_db first."
+        logger.error(error_msg)
+        return {"success": False, "error": error_msg}
     
     try:
-        conn = mysql.connector.connect(**db_config)
-        cursor = conn.cursor()
+        cursor = db_connection.cursor()
         cursor.execute("SHOW TABLES")
         tables = [table[0] for table in cursor.fetchall()]
         cursor.close()
-        conn.close()
         
-        logger.info("Tables listed successfully")
+        logger.info(f"Retrieved {len(tables)} tables from database")
         return {"success": True, "tables": tables}
     except Error as e:
         logger.error(f"Error listing tables: {e}")
@@ -275,237 +275,338 @@ def list_tables():
 
 def describe_table(table_name):
     """Get the structure of a table"""
-    if not db_config:
-        return {"success": False, "error": "Database not connected"}
+    global db_connection
+    
+    if not db_connection:
+        error_msg = "Database not connected. Use connect_db first."
+        logger.error(error_msg)
+        return {"success": False, "error": error_msg}
     
     try:
-        conn = mysql.connector.connect(**db_config)
-        cursor = conn.cursor()
+        cursor = db_connection.cursor(dictionary=True)
         cursor.execute(f"DESCRIBE {table_name}")
-        columns = cursor.fetchall()
+        structure = cursor.fetchall()
         cursor.close()
-        conn.close()
         
-        logger.info(f"Table {table_name} described successfully")
-        return {"success": True, "columns": columns}
+        logger.info(f"Retrieved structure for table {table_name}")
+        return {"success": True, "structure": structure}
     except Error as e:
-        logger.error(f"Error describing table: {e}")
+        logger.error(f"Error describing table {table_name}: {e}")
         return {"success": False, "error": str(e)}
 
 def handle_request(request):
-    """Handle incoming MCP requests"""
+    """Handle incoming JSON-RPC requests"""
     global last_activity_time, initialized
+    
+    # Update last activity time to prevent timeout
     last_activity_time = time.time()
     
     try:
-        if not isinstance(request, dict):
-            try:
-                request = json.loads(request)
-            except json.JSONDecodeError as e:
-                logger.error(f"Invalid JSON request: {e}")
-                sys.stderr.write(f"Invalid JSON request: {request}\n")
-                sys.stderr.flush()
-                return
-        
-        method = request.get('method')
-        params = request.get('params', {})
-        request_id = request.get('id')
+        # Parse JSON request
+        parsed_request = json.loads(request)
+        request_id = parsed_request.get('id')
+        method = parsed_request.get('method')
+        params = parsed_request.get('params', {})
         
         logger.info(f"Received request: method={method}, id={request_id}")
-        sys.stderr.write(f"Received request: method={method}, id={request_id}\n")
-        sys.stderr.flush()
         
         # Handle initialization request
-        if method == "initialize":
-            logger.info("Handling initialize request")
+        if method == 'initialize':
+            logger.info("Processing initialize request")
             initialized = True
-            response = {
-                "jsonrpc": "2.0",
-                "id": request_id,
-                "result": {
-                    "capabilities": {
-                        "textDocumentSync": 1,
-                        "hoverProvider": True,
-                        "completionProvider": {
-                            "resolveProvider": True,
-                            "triggerCharacters": ["."]
-                        }
+            
+            # Return server capabilities
+            return {
+                'jsonrpc': '2.0',
+                'id': request_id,
+                'result': {
+                    'capabilities': {
+                        'textDocumentSync': 1,
+                        'completionProvider': {
+                            'resolveProvider': True,
+                            'triggerCharacters': ['.']
+                        },
+                        'hoverProvider': True
                     },
-                    "serverInfo": {
-                        "name": "mysql-aqara",
-                        "version": "1.0.0"
+                    'serverInfo': {
+                        'name': 'mysql-aqara',
+                        'version': '1.0.0'
                     }
                 }
             }
-            print(json.dumps(response), flush=True)
             
-            # Also log to stderr for debugging
-            sys.stderr.write("Sent initialize response\n")
-            sys.stderr.flush()
-            return
-        
-        # Handle initialized notification
-        if method == "initialized":
-            logger.info("Received initialized notification")
-            sys.stderr.write("Received initialized notification\n")
-            sys.stderr.flush()
-            return
-        
         # Handle shutdown request
-        if method == "shutdown":
-            logger.info("Received shutdown request")
-            response = {
-                "jsonrpc": "2.0",
-                "id": request_id,
-                "result": None
+        elif method == 'shutdown':
+            logger.info("Processing shutdown request")
+            return {
+                'jsonrpc': '2.0',
+                'id': request_id,
+                'result': None
             }
-            print(json.dumps(response), flush=True)
-            return
-        
+            
         # Handle exit notification
-        if method == "exit":
-            logger.info("Received exit notification")
+        elif method == 'exit':
+            logger.info("Received exit notification, shutting down...")
             cleanup()
             sys.exit(0)
-        
-        # Handle tool requests - only if initialized
-        if not initialized:
-            logger.error("Received tool request before initialization")
-            error_response = {
-                "jsonrpc": "2.0",
-                "id": request_id,
-                "error": {
-                    "code": -32002,
-                    "message": "Server not initialized"
-                }
-            }
-            print(json.dumps(error_response), flush=True)
-            return
             
-        tool_name = method
-        
-        # Map tool names from mcp.json to python functions
-        tool_mapping = {
-            "connect_db": connect_db,
-            "create_or_modify_table": create_or_modify_table,
-            "query": execute_query,
-            "execute": execute_command,
-            "list_tables": list_tables,
-            "describe_table": describe_table
-        }
-        
-        if tool_name not in tool_mapping:
-            logger.error(f"Unknown tool: {tool_name}")
-            response = {
-                "jsonrpc": "2.0",
-                "id": request_id,
-                "error": {
-                    "code": -32601,
-                    "message": f"Method not found: {tool_name}"
+        # Handle MCP/listTools request
+        elif method == 'MCP/listTools':
+            logger.info("Processing MCP/listTools request")
+            return {
+                'jsonrpc': '2.0',
+                'id': request_id,
+                'result': {
+                    'tools': {
+                        'connect_db': {
+                            'description': 'Connect to a MySQL database',
+                            'parameters': {
+                                'properties': {
+                                    'host': {
+                                        'type': 'string',
+                                        'description': 'Database host',
+                                        'default': 'localhost'
+                                    },
+                                    'user': {
+                                        'type': 'string',
+                                        'description': 'Database username'
+                                    },
+                                    'password': {
+                                        'type': 'string',
+                                        'description': 'Database password',
+                                        'format': 'password'
+                                    },
+                                    'database': {
+                                        'type': 'string',
+                                        'description': 'Database name (optional)'
+                                    }
+                                },
+                                'required': ['host', 'user', 'password']
+                            }
+                        },
+                        'create_or_modify_table': {
+                            'description': 'Create a new table or modify an existing table schema',
+                            'parameters': {
+                                'properties': {
+                                    'query': {
+                                        'type': 'string',
+                                        'description': 'CREATE TABLE or ALTER TABLE SQL query'
+                                    },
+                                    'bind_vars': {
+                                        'type': 'object',
+                                        'description': 'Optional bind variables for parameterized queries'
+                                    }
+                                },
+                                'required': ['query']
+                            }
+                        },
+                        'query': {
+                            'description': 'Execute a SELECT query',
+                            'parameters': {
+                                'properties': {
+                                    'query': {
+                                        'type': 'string',
+                                        'description': 'SELECT SQL query'
+                                    },
+                                    'bind_vars': {
+                                        'type': 'object',
+                                        'description': 'Optional bind variables for parameterized queries'
+                                    }
+                                },
+                                'required': ['query']
+                            }
+                        },
+                        'execute': {
+                            'description': 'Execute INSERT, UPDATE, or DELETE query',
+                            'parameters': {
+                                'properties': {
+                                    'query': {
+                                        'type': 'string',
+                                        'description': 'SQL query (INSERT, UPDATE, DELETE)'
+                                    },
+                                    'bind_vars': {
+                                        'type': 'object',
+                                        'description': 'Optional bind variables for parameterized queries'
+                                    }
+                                },
+                                'required': ['query']
+                            }
+                        },
+                        'list_tables': {
+                            'description': 'List all tables in the connected database',
+                            'parameters': {
+                                'properties': {}
+                            }
+                        },
+                        'describe_table': {
+                            'description': 'Get the structure of a table',
+                            'parameters': {
+                                'properties': {
+                                    'table_name': {
+                                        'type': 'string',
+                                        'description': 'Name of the table to describe'
+                                    }
+                                },
+                                'required': ['table_name']
+                            }
+                        }
+                    }
                 }
             }
-        else:
-            # Execute the tool
-            logger.info(f"Executing tool: {tool_name}")
-            result = tool_mapping[tool_name](**params)
-            response = {
-                "jsonrpc": "2.0",
-                "id": request_id,
-                "result": result
+            
+        # Handle MCP/callTool request
+        elif method == 'MCP/callTool':
+            logger.info(f"Processing MCP/callTool request: {params}")
+            
+            tool_name = params.get('tool')
+            tool_params = params.get('parameters', {})
+            
+            # Execute the appropriate tool based on name
+            result = None
+            if tool_name == 'connect_db':
+                result = connect_db(
+                    host=tool_params.get('host', 'localhost'),
+                    user=tool_params.get('user', ''),
+                    password=tool_params.get('password', ''),
+                    database=tool_params.get('database', '')
+                )
+            elif tool_name == 'create_or_modify_table':
+                result = create_or_modify_table(
+                    query=tool_params.get('query', ''),
+                    bind_vars=tool_params.get('bind_vars')
+                )
+            elif tool_name == 'query':
+                result = execute_query(
+                    query=tool_params.get('query', ''),
+                    bind_vars=tool_params.get('bind_vars')
+                )
+            elif tool_name == 'execute':
+                result = execute_command(
+                    query=tool_params.get('query', ''),
+                    bind_vars=tool_params.get('bind_vars')
+                )
+            elif tool_name == 'list_tables':
+                result = list_tables()
+            elif tool_name == 'describe_table':
+                result = describe_table(
+                    table_name=tool_params.get('table_name', '')
+                )
+            else:
+                error_msg = f"Unknown tool: {tool_name}"
+                logger.error(error_msg)
+                return {
+                    'jsonrpc': '2.0',
+                    'id': request_id,
+                    'error': {
+                        'code': -32601,
+                        'message': error_msg
+                    }
+                }
+            
+            logger.info(f"Tool {tool_name} execution completed with success={result.get('success', False)}")
+            return {
+                'jsonrpc': '2.0',
+                'id': request_id,
+                'result': result
             }
-        
-        print(json.dumps(response), flush=True)
-        sys.stderr.write(f"Sent response for {tool_name}\n")
-        sys.stderr.flush()
-        
-    except Exception as e:
-        logger.error(f"Error handling request: {e}", exc_info=True)
-        sys.stderr.write(f"Error handling request: {str(e)}\n")
-        traceback.print_exc(file=sys.stderr)
-        sys.stderr.flush()
-        
-        error_response = {
-            "jsonrpc": "2.0",
-            "id": request.get('id') if isinstance(request, dict) else None,
-            "error": {
-                "code": -32000,
-                "message": str(e)
+            
+        # Handle unknown method
+        else:
+            error_msg = f"Unknown method: {method}"
+            logger.error(error_msg)
+            return {
+                'jsonrpc': '2.0',
+                'id': request_id,
+                'error': {
+                    'code': -32601,
+                    'message': error_msg
+                }
+            }
+            
+    except json.JSONDecodeError as e:
+        logger.error(f"JSON parsing error: {e}", exc_info=True)
+        return {
+            'jsonrpc': '2.0',
+            'id': None,
+            'error': {
+                'code': -32700,
+                'message': f"Parse error: {str(e)}"
             }
         }
-        print(json.dumps(error_response), flush=True)
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}", exc_info=True)
+        return {
+            'jsonrpc': '2.0',
+            'id': request_id if 'request_id' in locals() else None,
+            'error': {
+                'code': -32603,
+                'message': f"Internal error: {str(e)}"
+            }
+        }
 
 def main():
-    """Main entry point"""
-    # Set up signal handlers
+    """Main function to run the server"""
+    global running
+    
+    # Register signal handlers for graceful shutdown
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
     
-    logger.info("Initializing server...")
-    sys.stderr.write("Server initializing...\n")
-    sys.stderr.flush()
-    
-    # Connect to database if environment variables are set
-    if db_config:
-        logger.info("Trying to connect to database with environment variables...")
-        try:
-            conn = mysql.connector.connect(**db_config)
-            conn.close()
-            logger.info("Successfully connected to database with environment variables")
-        except Error as e:
-            logger.error(f"Failed to connect with environment variables: {e}")
-            db_config = None
-    
     # Start keep-alive thread
-    keep_alive = threading.Thread(target=keep_alive_thread)
-    keep_alive.daemon = True
-    keep_alive.start()
+    keep_alive_thread = threading.Thread(target=keep_alive_thread, daemon=True)
+    keep_alive_thread.start()
     
-    try:
-        logger.info("Server started and connected successfully")
-        sys.stderr.write("Server started successfully\n")
-        sys.stderr.flush()
-        
-        # Describe available tools
-        tools = ["connect_db", "create_or_modify_table", "query", "execute", "list_tables", "describe_table"]
-        logger.info(f"Available tools: {', '.join(tools)}")
-        
-        # Main loop
-        while running:
+    # Print startup message
+    logger.info("MySQL MCP server started, waiting for messages...")
+    
+    # Main loop to read requests from stdin
+    while running:
+        try:
+            # Read a line from stdin
+            request = sys.stdin.readline()
+            
+            # Check if stdin is closed
+            if not request:
+                logger.warning("End of input stream detected. Exiting...")
+                running = False
+                break
+                
+            # Handle empty lines
+            request = request.strip()
+            if not request:
+                continue
+                
+            # Process the request
+            logger.debug(f"Raw request: {request}")
+            response = handle_request(request)
+            
+            # Send the response
+            response_json = json.dumps(response)
+            print(response_json, flush=True)
+            logger.debug(f"Response sent: {response_json}")
+            
+        except KeyboardInterrupt:
+            logger.info("Keyboard interrupt received, exiting...")
+            running = False
+            break
+        except Exception as e:
+            logger.error(f"Unexpected error in main loop: {e}", exc_info=True)
+            # Try to send an error response
             try:
-                line = sys.stdin.readline()
-                if not line:
-                    logger.info("End of input stream detected")
-                    sys.stderr.write("End of input stream detected\n")
-                    sys.stderr.flush()
-                    break
-                
-                sys.stderr.write(f"Received data: {line[:50]}...\n")
-                sys.stderr.flush()
-                    
-                request = line.strip()
-                handle_request(request)
-                
-            except json.JSONDecodeError as e:
-                logger.error(f"Invalid JSON received: {e}")
-                sys.stderr.write(f"Invalid JSON: {e}\n")
-                sys.stderr.flush()
-                continue
-            except Exception as e:
-                logger.error(f"Error in main loop: {e}", exc_info=True)
-                sys.stderr.write(f"Main loop error: {str(e)}\n")
-                traceback.print_exc(file=sys.stderr)
-                sys.stderr.flush()
-                continue
+                error_response = {
+                    'jsonrpc': '2.0',
+                    'id': None,
+                    'error': {
+                        'code': -32603,
+                        'message': f"Internal error: {str(e)}"
+                    }
+                }
+                print(json.dumps(error_response), flush=True)
+            except:
+                pass
     
-    except KeyboardInterrupt:
-        logger.info("Server interrupted by user")
-    except Exception as e:
-        logger.error(f"Server error: {e}", exc_info=True)
-        sys.stderr.write(f"Server error: {str(e)}\n")
-        traceback.print_exc(file=sys.stderr)
-        sys.stderr.flush()
-    finally:
-        cleanup()
+    # Cleanup before exit
+    cleanup()
 
 if __name__ == "__main__":
     main() 

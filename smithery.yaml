@@ -29,13 +29,13 @@ settings:
 
 startCommand:
   name: "Start MySQL server"
-  command: "python mcp_server.py"
+  command: "node index.js"
   background: true
   environment:
-    MYSQL_HOST: "{{ settings.host }}"
-    MYSQL_USER: "{{ settings.user }}"
-    MYSQL_PASSWORD: "{{ settings.password }}"
-    MYSQL_DATABASE: "{{ settings.database }}"
+    SMITHERY_SETTING_HOST: "{{ settings.host }}"
+    SMITHERY_SETTING_USER: "{{ settings.user }}"
+    SMITHERY_SETTING_PASSWORD: "{{ settings.password }}"
+    SMITHERY_SETTING_DATABASE: "{{ settings.database }}"
     
 tools:
   connect_db:

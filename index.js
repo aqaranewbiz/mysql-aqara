@@ -115,14 +115,31 @@ if (USE_PYTHON) {
       process.exit(1);
     }
     
-    const serverProcess = spawn(pythonCmd, [mcp_server_path]);
+    // Get the settings from the environment variables (set by Smithery)
+    const env = {
+      ...process.env,
+      DB_HOST: process.env.SMITHERY_SETTING_HOST || 'localhost',
+      DB_USER: process.env.SMITHERY_SETTING_USER || '',
+      DB_PASSWORD: process.env.SMITHERY_SETTING_PASSWORD || '',
+      DB_DATABASE: process.env.SMITHERY_SETTING_DATABASE || ''
+    };
     
-    serverProcess.stdout.on('data', (data) => {
-      console.log(`${data}`);
-    });
+    // Log the settings (masking sensitive data)
+    console.error(`DB Settings:
+    - Host: ${env.DB_HOST}
+    - User: ${env.DB_USER}
+    - Database: ${env.DB_DATABASE}
+    - Password: ${env.DB_PASSWORD ? '*****' : 'Not set'}
+    `);
     
+    const serverProcess = spawn(pythonCmd, [mcp_server_path], { env });
+    
+    // Connect the Python process's stdout to our stdout
+    serverProcess.stdout.pipe(process.stdout);
+    
+    // Log stderr but don't pass it to stdout
     serverProcess.stderr.on('data', (data) => {
-      console.error(`${data}`);
+      console.error(`Python: ${data}`);
     });
     
     serverProcess.on('close', (code) => {
