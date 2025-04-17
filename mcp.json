@@ -2,15 +2,15 @@
   "name": "mysql-aqara",
   "version": "1.0.0",
   "description": "MySQL MCP server for Smithery",
-  "main": "run.js",
+  "main": "index.js",
   "bin": "./bin/mysql-aqara",
   "scripts": {
-    "start": "node run.js"
+    "start": "node index.js"
   },
   "mcp": {
     "type": "local",
     "localInstallation": true,
-    "command": "node run.js",
+    "command": "node index.js",
     "tools": {
       "connect_db": {
         "description": "Establish connection to MySQL database using provided credentials",

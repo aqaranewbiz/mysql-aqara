@@ -2,17 +2,16 @@
   "name": "mysql-aqara",
   "version": "1.0.0",
   "description": "MySQL MCP server for Smithery",
+  "main": "index.js",
   "bin": {
     "mysql-aqara": "./bin/mysql-aqara"
   },
   "files": [
     "bin",
-    "run.js",
-    "mcp_server.py",
-    "requirements.txt"
+    "index.js"
   ],
   "scripts": {
-    "start": "python mcp_server.py"
+    "start": "node index.js"
   },
   "keywords": [
     "mcp",
@@ -35,7 +34,10 @@
   },
   "mcp": {
     "type": "local",
-    "command": "node run.js"
+    "command": "node index.js"
   },
-  "dependencies": {}
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^0.6.0",
+    "mysql2": "^3.6.0"
+  }
 } 

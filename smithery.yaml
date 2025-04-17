@@ -45,7 +45,7 @@ startCommand:
         description: "MySQL database name"
   command:
     - "node"
-    - "run.js"
+    - "index.js"
   exampleConfig:
     mysqlHost: localhost
     mysqlUser: example_user
