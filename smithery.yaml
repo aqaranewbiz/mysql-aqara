@@ -1,5 +1,5 @@
-# Smithery configuration file: https://smithery.ai/docs/config#smitheryyaml
-name: "@aqaranewbiz/mysql-aqara"
+# Smithery configuration file for MySQL MCP Server
+name: "mysql-aqara"
 displayName: "MySQL Database MCP Server"
 description: "MySQL MCP server for Smithery - Database query and management tools"
 version: "1.0.0"
@@ -7,7 +7,7 @@ license: "MIT"
 
 installation:
   type: "npm"
-  package: "@aqaranewbiz/mysql-aqara"
+  package: "mysql-aqara"
   local: true
   localPath: "."
 
@@ -21,7 +21,6 @@ build:
   logLevel: "verbose"  # Add verbose logging for build process
 
 startCommand:
-  type: stdio
   configSchema:
     type: object
     required:
@@ -32,33 +31,21 @@ startCommand:
     properties:
       mysqlHost:
         type: string
-        description: Hostname for the MySQL server
+        description: "MySQL server host address"
         default: "localhost"
       mysqlUser:
         type: string
-        description: MySQL user name
+        description: "MySQL user name"
       mysqlPassword:
         type: string
-        description: MySQL user password
+        description: "MySQL user password"
         secret: true
       mysqlDatabase:
         type: string
-        description: MySQL database name
-  commandFunction: |-
-    (config) => ({
-      command: 'node',
-      args: ['run.js'],
-      env: {
-        MYSQL_HOST: config.mysqlHost,
-        MYSQL_USER: config.mysqlUser,
-        MYSQL_PASSWORD: config.mysqlPassword,
-        MYSQL_DATABASE: config.mysqlDatabase,
-        PYTHONUNBUFFERED: '1',
-        PYTHONIOENCODING: 'utf-8',
-        NODE_ENV: 'production',
-        DEBUG: 'true'
-      }
-    })
+        description: "MySQL database name"
+  command:
+    - "node"
+    - "run.js"
   exampleConfig:
     mysqlHost: localhost
     mysqlUser: example_user

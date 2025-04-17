@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 // MySQL MCP Server for Smithery
 // This file exists to make the package compatible with npm
 // The actual server is started by run.js

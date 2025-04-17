@@ -21,6 +21,17 @@ if (!fs.existsSync(pythonScript)) {
   process.exit(1);
 }
 
+// Create a special .local file to tell Smithery this is a local MCP
+const localMarkerFile = path.join(scriptDir, '.local');
+if (!fs.existsSync(localMarkerFile)) {
+  try {
+    fs.writeFileSync(localMarkerFile, 'This is a local MCP server');
+    console.error('Created .local marker file for Smithery');
+  } catch (err) {
+    console.error('Warning: Could not create .local marker file', err);
+  }
+}
+
 // In Docker or Smithery environment, we know python is installed
 const isDocker = fs.existsSync('/.dockerenv') || process.env.DOCKER;
 const isSmithery = process.env.SMITHERY === 'true';
@@ -28,7 +39,7 @@ const pythonCmd = (isDocker || isSmithery) ? 'python' : detectPythonCommand();
 
 // Log environment for debugging
 console.error(`Environment: Docker=${isDocker}, Smithery=${isSmithery}`);
-console.error(`MySQL config: Host=${process.env.MYSQL_HOST}, User=${process.env.MYSQL_USER}, DB=${process.env.MYSQL_DATABASE}`);
+console.error(`MySQL config: Host=${process.env.MYSQL_HOST || '(not set)'}, User=${process.env.MYSQL_USER || '(not set)'}`);
 
 // Detect Python command for non-Docker environments
 function detectPythonCommand() {
@@ -53,22 +64,45 @@ function detectPythonCommand() {
   return 'python';
 }
 
+// Ensure required Python packages are installed
+function ensureDependencies() {
+  console.error('Checking Python dependencies...');
+  const requirementsFile = path.join(scriptDir, 'requirements.txt');
+  
+  if (fs.existsSync(requirementsFile)) {
+    try {
+      const result = require('child_process').spawnSync(pythonCmd, [
+        '-m', 'pip', 'install', '-r', requirementsFile
+      ]);
+      
+      if (result.status !== 0) {
+        console.error('Warning: Failed to install Python dependencies');
+        console.error(result.stderr.toString());
+      } else {
+        console.error('Python dependencies installed successfully');
+      }
+    } catch (err) {
+      console.error('Error installing Python dependencies:', err);
+    }
+  }
+}
+
+// Try to install dependencies automatically
+ensureDependencies();
+
 // Environment setup
 const env = {
   ...process.env,
   PYTHONUNBUFFERED: '1',
   PYTHONIOENCODING: 'utf-8',
-  MCP_SERVER: '@aqaranewbiz/mysql-aqara'
+  MCP_SERVER: 'mysql-aqara'
 };
 
-// If config was provided through environment variables, pass it to Python script
-if (process.env.MYSQL_HOST && process.env.MYSQL_USER && process.env.MYSQL_PASSWORD && process.env.MYSQL_DATABASE) {
-  console.error('MySQL connection parameters found in environment');
-  env.DB_HOST = process.env.MYSQL_HOST;
-  env.DB_USER = process.env.MYSQL_USER;
-  env.DB_PASSWORD = process.env.MYSQL_PASSWORD;
-  env.DB_DATABASE = process.env.MYSQL_DATABASE;
-}
+// Map from smithery parameters to environment variables
+if (process.env.mysqlHost || process.env.MYSQL_HOST) env.DB_HOST = process.env.mysqlHost || process.env.MYSQL_HOST;
+if (process.env.mysqlUser || process.env.MYSQL_USER) env.DB_USER = process.env.mysqlUser || process.env.MYSQL_USER;
+if (process.env.mysqlPassword || process.env.MYSQL_PASSWORD) env.DB_PASSWORD = process.env.mysqlPassword || process.env.MYSQL_PASSWORD;
+if (process.env.mysqlDatabase || process.env.MYSQL_DATABASE) env.DB_DATABASE = process.env.mysqlDatabase || process.env.MYSQL_DATABASE;
 
 // Export for use as a module
 if (module.parent) {

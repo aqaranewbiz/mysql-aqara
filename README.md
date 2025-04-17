@@ -7,7 +7,7 @@ A MySQL MCP server implementation for Smithery that allows direct database opera
 ### One-Click Installation with Smithery
 
 1. In Smithery, select "Add MCP Server"
-2. Use package name: `@aqaranewbiz/mysql-aqara`
+2. Use package name: `mysql-aqara`
 3. Smithery will automatically install and configure the server
 
 ### Manual Installation
@@ -18,8 +18,9 @@ A MySQL MCP server implementation for Smithery that allows direct database opera
 pip install -r requirements.txt
 npm install
 ```
-3. Make run.js executable:
+3. Make the necessary files executable:
 ```bash
+chmod +x bin/mysql-aqara
 chmod +x run.js
 ```
 
@@ -31,24 +32,19 @@ The server will automatically be available in Smithery after installation.
 ### Command Line
 ```bash
 # If installed globally
-npx @aqaranewbiz/mysql-aqara
+npx mysql-aqara
 
 # If installed locally
-npx @aqaranewbiz/mysql-aqara
-```
-
-### Direct Execution
-```bash
 node run.js
 ```
 
 ### Using with Smithery CLI
 ```bash
 # Use Interactive Prompt (Recommended)
-npx @smithery/cli@latest run @aqaranewbiz/mysql-aqara
+npx @smithery/cli@latest run mysql-aqara
 
 # Or provide config as JSON (replace with your own values)
-npx @smithery/cli@latest run @aqaranewbiz/mysql-aqara --config '{"host":"<YOUR_HOST>","user":"<YOUR_USER>","password":"<YOUR_PASSWORD>","database":"<YOUR_DATABASE>"}'
+npx @smithery/cli@latest run mysql-aqara --config '{"mysqlHost":"<YOUR_HOST>","mysqlUser":"<YOUR_USER>","mysqlPassword":"<YOUR_PASSWORD>","mysqlDatabase":"<YOUR_DATABASE>"}'
 ```
 
 ## Configuration
@@ -106,8 +102,9 @@ If you encounter any issues with server connection:
    pip install -r requirements.txt
    ```
 
-3. Ensure the run.js file has execution permissions:
+3. Ensure the necessary files have execution permissions:
    ```bash
+   chmod +x bin/mysql-aqara
    chmod +x run.js
    ```
 
@@ -121,9 +118,9 @@ If you encounter any issues with server connection:
    - Check firewall rules allowing the connection
 
 6. If you see the error "This server works best locally, but does not have a local installation option":
-   - Make sure the server is installed with the correct package name: `@aqaranewbiz/mysql-aqara`
-   - Check that the package.json and mcp.json files have the property `localInstallation: true`
-   - Ensure the mcp.json, package.json, and smithery.yaml files all use the same package name
+   - Make sure the `.mcp-server` file contains only `mysql-aqara`
+   - Make sure all configuration files have the same package name
+   - Remove any node_modules or package-lock.json and reinstall
 
 7. When using Smithery CLI with the --config parameter:
    - Use single quotes around the JSON object
@@ -131,7 +128,7 @@ If you encounter any issues with server connection:
    - Do not include spaces in the JSON string
    - Example:
      ```bash
-     npx @smithery/cli@latest run @aqaranewbiz/mysql-aqara --config '{"host":"localhost","user":"<YOUR_USER>","password":"<YOUR_PASSWORD>","database":"<YOUR_DATABASE>"}'
+     npx @smithery/cli@latest run mysql-aqara --config '{"mysqlHost":"localhost","mysqlUser":"<YOUR_USER>","mysqlPassword":"<YOUR_PASSWORD>","mysqlDatabase":"<YOUR_DATABASE>"}'
      ```
 
 ## Security Considerations
